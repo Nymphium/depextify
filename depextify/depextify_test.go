@@ -15,7 +15,7 @@ func TestDo(t *testing.T) {
 		expected map[string][]posInfo
 	}{
 		{
-			name: "simple case",
+			name:    "simple case",
 			content: "echo \"hello\"\nls -l\ncat file.txt\n",
 			expected: map[string][]posInfo{
 				"ls":  {{line: 2, col: 1, len: 2}},
@@ -23,7 +23,7 @@ func TestDo(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple occurrences",
+			name:    "multiple occurrences",
 			content: "curl example.com\ncurl google.com\n",
 			expected: map[string][]posInfo{
 				"curl": {{line: 1, col: 1, len: 4}, {line: 2, col: 1, len: 4}},
@@ -34,13 +34,13 @@ func TestDo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			filePath := filepath.Join(tmpDir, "test.sh")
+			filePath := filepath.Clean(filepath.Join(tmpDir, "test.sh"))
 			f, err := os.Create(filePath)
 			require.NoError(t, err)
 			_, err = f.WriteString(tt.content)
 			require.NoError(t, err)
-			f.Seek(0, 0)
-			defer f.Close()
+			_, _ = f.Seek(0, 0)
+			defer func() { _ = f.Close() }()
 
 			actual, err := Do(f)
 			require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestScan(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	script1Path := filepath.Join(tmpDir, "script1.sh")
-	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file"), 0644))
+	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file"), 0600))
 
 	t.Run("scan all", func(t *testing.T) {
 		res, err := Scan(tmpDir, false, false, nil)

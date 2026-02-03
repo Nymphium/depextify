@@ -1,0 +1,16 @@
+version: "2"
+
+run:
+  timeout: 5m
+  concurrency: 0
+
+linters:
+  enable:
+    - misspell
+    - unused
+    - staticcheck
+    - govet
+    - errcheck
+    - gocyclo
+    - nilnil
+    - importas

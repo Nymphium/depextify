@@ -45,6 +45,8 @@
             gopls
             golangci-lint
             gotest
+            pkgs.actionlint
+
             pkgs.nil
             formatter
             gomod2nix.legacyPackages.${system}.gomod2nix

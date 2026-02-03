@@ -39,6 +39,13 @@ func highlight(code, lexerName, styleName string) string {
 	return strings.TrimSpace(sb.String())
 }
 
+func toInt(u uint) int {
+	if u > uint(^uint(0)>>1) {
+		return 0
+	}
+	return int(u)
+}
+
 // collectLocalFuncs() collects name of f()
 func collectLocalFuncs(file *syntax.File) map[string]bool {
 	localFuncs := make(map[string]bool)
@@ -195,13 +202,6 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 						start := occ.Col - 1
 						end := start + occ.Len
 						if start >= 0 && end <= len(content) {
-							// Highlight by wrapping the command with underline/bold before chroma
-							// or just use a placeholder. Chroma might strip unknown ANSI.
-							// Let's use a more robust way: highlight the whole line,
-							// but since we want the command specifically emphasized,
-							// we'll underline it in the raw string if we are not using chroma,
-							// or just let chroma handle it.
-							// User asked for "強調表示", so let's use underline.
 							content = content[:start] + colorUnderline + content[start:end] + colorReset + content[end:]
 						}
 						content = highlight(content, lexerName, styleName)
@@ -236,11 +236,12 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 		if !reShell.MatchString(path) {
 			return
 		}
+		path = filepath.Clean(path)
 		f, err := os.Open(path)
 		if err != nil {
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		cmdPositions, err := Do(f)
 		if err != nil || len(cmdPositions) == 0 {
@@ -267,10 +268,10 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 			for _, p := range ps {
 				if p.line > 0 && p.line <= uint(len(lines)) {
 					fileOccs[cmd] = append(fileOccs[cmd], Occurrence{
-						Line:     int(p.line),
-						Col:      int(p.col),
-						Len:      int(p.len),
-						FullLine: lines[p.line-1], // Keep original for correct indexing
+						Line:     toInt(p.line),
+						Col:      toInt(p.col),
+						Len:      toInt(p.len),
+						FullLine: lines[p.line-1],
 					})
 				}
 			}
