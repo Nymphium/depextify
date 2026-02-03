@@ -20,6 +20,7 @@ var builtins = func() map[string]bool {
 		"unlimit", "unset", "unsetopt", "until", "vared", "wait", "whence",
 		"where", "while", "which", "zcompile", "zformat", "zftp", "zle",
 		"zmodload", "zparseopts", "zprof", "zpty", "zregexparse", "zstat", "ztcp",
+		"zstyle", "add-zsh-hook", "compaudit", "compinit",
 	}
 
 	b := make(map[string]bool, len(keys))

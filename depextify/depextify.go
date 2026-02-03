@@ -17,7 +17,7 @@ import (
 
 var formatter = formatters.TTY256
 
-func highlight(code, lexerName, styleName string) string {
+func emphasize(code, lexerName, styleName string) string {
 	lexer := lexers.Get(lexerName)
 	if lexer == nil {
 		lexer = lexers.Get("bash")
@@ -37,6 +37,38 @@ func highlight(code, lexerName, styleName string) string {
 		return code
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// applyHighlight applies bold red to a specific range in a string that may contain ANSI codes.
+func applyHighlight(text string, start, end int) string {
+	var sb strings.Builder
+	pos := 0
+	inANSI := false
+
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\033' {
+			inANSI = true
+			sb.WriteByte(text[i])
+			continue
+		}
+		if inANSI {
+			sb.WriteByte(text[i])
+			if text[i] == 'm' {
+				inANSI = false
+			}
+			continue
+		}
+
+		if pos == start {
+			sb.WriteString(colorBold + colorRed)
+		}
+		sb.WriteByte(text[i])
+		pos++
+		if pos == end {
+			sb.WriteString(colorReset)
+		}
+	}
+	return sb.String()
 }
 
 func toInt(u uint) int {
@@ -116,12 +148,12 @@ type Occurrence struct {
 type Result map[string]map[string][]Occurrence
 
 const (
-	colorReset     = "\033[0m"
-	colorCyan      = "\033[36m"
-	colorGreen     = "\033[32m"
-	colorYellow    = "\033[33m"
-	colorBold      = "\033[1m"
-	colorUnderline = "\033[4m"
+	colorReset  = "\033[0m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBold   = "\033[1m"
+	colorRed    = "\033[31m"
 )
 
 // Format returns a formatted string representation of the result.
@@ -201,10 +233,10 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 					if useColor {
 						start := occ.Col - 1
 						end := start + occ.Len
-						if start >= 0 && end <= len(content) {
-							content = content[:start] + colorUnderline + content[start:end] + colorReset + content[end:]
+						content = emphasize(content, lexerName, styleName)
+						if start >= 0 && end <= len(occ.FullLine) {
+							content = applyHighlight(content, start, end)
 						}
-						content = highlight(content, lexerName, styleName)
 					} else {
 						content = strings.TrimSpace(content)
 					}

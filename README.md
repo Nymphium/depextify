@@ -20,15 +20,13 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 
 - `-count`: Show the number of occurrences for each command.
 - `-pos`: Show the file position (line number) and the full line where each command is used.
-- `-coreutils`: Include GNU coreutils in the output (default is hidden).
-- `-common`: Include common tools (grep, sed, awk, etc.) in the output (default is hidden).
-- `-no-color`: Disable colored output.
+- `-[no-]coreutils`: Ignore/include GNU coreutils in the output (default: ignore).
+- `-[no-]common`: Ignore/include common tools (grep, sed, awk, etc.) in the output (default: ignore).
+- `-[no-]color`: Enable/disable colored output (default: auto).
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
+- `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
-- `-list-builtins`: List all ignored shell built-in commands and exit.
-- `-list-coreutils`: List all ignored GNU coreutils commands and exit.
-- `-list-common`: List all ignored common tools and exit.
 
 ## Examples
 
