@@ -2,13 +2,6 @@
 
 `depextify` is a tool to collect and display command dependencies from shell scripts.
 
-```sh
-$ depextify .
-examples/test.sh
-  notify-send
-  tee
-```
-
 ## Installation
 
 ```sh
@@ -18,7 +11,7 @@ go install github.com/nymphium/depextify@latest
 ## Usage
 
 ```sh
-$ depextify [options] <file|directory>
+depextify [options] <file|directory>
 ```
 
 By default, it recursively scans directories and filters out shell built-ins, GNU coreutils, and common tools (like `grep`, `sed`, `awk`) to show meaningful external dependencies.
@@ -27,8 +20,8 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 
 - `-count`: Show the number of occurrences for each command.
 - `-pos`: Show the file position (line number) and the full line where each command is used.
-- `-no-coreutils=false`: Include GNU coreutils in the output (default is `true`, hiding them).
-- `-no-common=false`: Include common tools (grep, sed, awk, etc.) in the output (default is `true`, hiding them).
+- `-coreutils`: Include GNU coreutils in the output (default is hidden).
+- `-common`: Include common tools (grep, sed, awk, etc.) in the output (default is hidden).
 - `-no-color`: Disable colored output.
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
@@ -38,6 +31,15 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-list-common`: List all ignored common tools and exit.
 
 ## Examples
+
+### Scan a directory
+
+```sh
+$ depextify .
+examples/test.sh
+  notify-send
+  tee
+```
 
 ### Show positions and counts
 
@@ -52,7 +54,7 @@ tee: 1
 ### Include coreutils and common tools
 
 ```sh
-$ depextify -no-coreutils=false -no-common=false examples/test.sh
+$ depextify -coreutils -common examples/test.sh
 curl
 date
 find

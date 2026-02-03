@@ -14,6 +14,8 @@ type config struct {
 	showPos       bool
 	noCoreutils   bool
 	noCommon      bool
+	withCoreutils bool
+	withCommon    bool
 	noColor       bool
 	listBuiltins  bool
 	listCoreutils bool
@@ -31,6 +33,8 @@ func parseFlags() (*config, error) {
 	fs.BoolVar(&cfg.showPos, "pos", false, "show file position and full line for each command")
 	fs.BoolVar(&cfg.noCoreutils, "no-coreutils", true, "ignore coreutils commands")
 	fs.BoolVar(&cfg.noCommon, "no-common", true, "ignore common commands (grep, find, etc.)")
+	fs.BoolVar(&cfg.withCoreutils, "coreutils", false, "include coreutils commands")
+	fs.BoolVar(&cfg.withCommon, "common", false, "include common commands")
 	fs.BoolVar(&cfg.noColor, "no-color", false, "disable colored output")
 	fs.BoolVar(&cfg.listBuiltins, "list-builtins", false, "list shell built-in commands")
 	fs.BoolVar(&cfg.listCoreutils, "list-coreutils", false, "list GNU Coreutils commands")
@@ -114,7 +118,7 @@ func main() {
 		extraIgnores = strings.Split(cfg.ignores, ",")
 	}
 
-	results, err := depextify.Scan(cfg.target, cfg.noCoreutils, cfg.noCommon, extraIgnores)
+	results, err := depextify.Scan(cfg.target, cfg.noCoreutils && !cfg.withCoreutils, cfg.noCommon && !cfg.withCommon, extraIgnores)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
