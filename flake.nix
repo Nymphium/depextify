@@ -17,7 +17,7 @@
       in
       {
           legacyPackages = pkgs;
-          devShell =
+          devShells.default =
             pkgs.mkShellNoCC {
               packages = [ go gopls golangci-lint gotest pkgs.nil formatter ];
             };
