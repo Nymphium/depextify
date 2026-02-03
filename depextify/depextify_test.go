@@ -12,74 +12,21 @@ func TestDo(t *testing.T) {
 	tests := []struct {
 		name     string
 		content  string
-		expected map[string]struct{}
+		expected map[string][]posInfo
 	}{
 		{
 			name: "simple case",
-			content: `
-echo "hello"
-ls -l
-cat file.txt
-`,
-			expected: map[string]struct{}{
-				"ls":  {},
-				"cat": {},
+			content: "echo \"hello\"\nls -l\ncat file.txt\n",
+			expected: map[string][]posInfo{
+				"ls":  {{line: 2, col: 1, len: 2}},
+				"cat": {{line: 3, col: 1, len: 3}},
 			},
 		},
 		{
-			name: "with function",
-			content: `
-my_func() {
-  echo "hello"
-}
-
-ls -l
-my_func
-`,
-			expected: map[string]struct{}{
-				"ls": {},
-			},
-		},
-		{
-			name: "with builtins",
-			content: `
-if true; then
-  cd /tmp
-fi
-`,
-			expected: map[string]struct{}{},
-		},
-		{
-			name:     "empty file",
-			content:  "",
-			expected: map[string]struct{}{},
-		},
-		{
-			name: "complex case",
-			content: `
-#!/bin/sh
-
-# this is a comment
-echo "hello world"
-
-my_func() {
-  echo "in function"
-  grep "pattern" file
-}
-
-if [ -f "file" ]; then
-  cat file | wc -l
-fi
-
-my_func
-
-curl -s https://example.com
-`,
-			expected: map[string]struct{}{
-				"grep": {},
-				"cat":  {},
-				"wc":   {},
-				"curl": {},
+			name: "multiple occurrences",
+			content: "curl example.com\ncurl google.com\n",
+			expected: map[string][]posInfo{
+				"curl": {{line: 1, col: 1, len: 4}, {line: 2, col: 1, len: 4}},
 			},
 		},
 	}
@@ -101,4 +48,66 @@ curl -s https://example.com
 			require.Equal(t, tt.expected, actual)
 		})
 	}
+}
+
+func TestResult_Format(t *testing.T) {
+	res := Result{
+		"a.sh": {
+			"ls":  {{Line: 7, Col: 1, Len: 2, FullLine: "ls -a"}, {Line: 1024, Col: 3, Len: 2, FullLine: "  ls -l"}},
+			"cat": {{Line: 3, Col: 1, Len: 3, FullLine: "cat file"}},
+		},
+	}
+
+	t.Run("default on file", func(t *testing.T) {
+		expected := "cat\nls\n"
+		require.Equal(t, expected, res.Format(false, false, false, false, "bash", "monokai"))
+	})
+
+	t.Run("-count on file", func(t *testing.T) {
+		expected := "cat: 1\nls: 2\n"
+		require.Equal(t, expected, res.Format(true, false, false, false, "bash", "monokai"))
+	})
+
+	t.Run("-pos on file", func(t *testing.T) {
+		// global max line is 1024 (width 4)
+		expected := "cat:\n     3:  cat file\nls:\n     7:  ls -a\n  1024:  ls -l\n"
+		require.Equal(t, expected, res.Format(false, true, false, false, "bash", "monokai"))
+	})
+
+	t.Run("default on directory", func(t *testing.T) {
+		expected := "a.sh\n  cat\n  ls\n"
+		require.Equal(t, expected, res.Format(false, false, true, false, "bash", "monokai"))
+	})
+
+	t.Run("-pos on directory", func(t *testing.T) {
+		expected := "a.sh\n  cat:\n       3:  cat file\n  ls:\n       7:  ls -a\n    1024:  ls -l\n"
+		require.Equal(t, expected, res.Format(false, true, true, false, "bash", "monokai"))
+	})
+}
+
+func TestScan(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	script1Path := filepath.Join(tmpDir, "script1.sh")
+	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file"), 0644))
+
+	t.Run("scan all", func(t *testing.T) {
+		res, err := Scan(tmpDir, false, false, nil)
+		require.NoError(t, err)
+		require.Contains(t, res, script1Path)
+		require.Contains(t, res[script1Path], "ls")
+		require.Contains(t, res[script1Path], "cat")
+		require.Contains(t, res[script1Path], "curl")
+		require.Contains(t, res[script1Path], "grep")
+	})
+
+	t.Run("scan with extra ignores", func(t *testing.T) {
+		res, err := Scan(tmpDir, false, false, []string{"curl", "ls"})
+		require.NoError(t, err)
+		require.Contains(t, res, script1Path)
+		require.NotContains(t, res[script1Path], "ls")
+		require.Contains(t, res[script1Path], "cat")
+		require.NotContains(t, res[script1Path], "curl")
+		require.Contains(t, res[script1Path], "grep")
+	})
 }

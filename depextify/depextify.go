@@ -1,38 +1,43 @@
 package depextify
 
 import (
+	"fmt"
+	"maps"
 	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 
+	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Ignore shell built-in commands
-var builtins = func() map[string]bool {
-	keys := []string{
-		"if", "then", "else", "elif", "fi",
-		"for", "while", "until", "do", "done",
-		"case", "esac", "function", "select",
-		"alias", "bg", "bind", "break", "builtin",
-		"cd", "command", "continue", "declare", "echo",
-		"eval", "exec", "exit", "export", "false",
-		"fc", "fg", "getopts", "hash", "help",
-		"history", "jobs", "kill", "let", "local",
-		"logout", "printf", "pwd", "read", "readonly",
-		"return", "set", "shift", "source", "test",
-		"times", "trap", "true", "type", "ulimit",
-		"umask", "unalias", "unset", "wait",
-		"{", "}", "(", ")", "[[", "]]",
-		"!", ".", ":", "[", "]",
+var formatter = formatters.TTY256
+
+func highlight(code, lexerName, styleName string) string {
+	lexer := lexers.Get(lexerName)
+	if lexer == nil {
+		lexer = lexers.Get("bash")
+	}
+	style := styles.Get(styleName)
+	if style == nil {
+		style = styles.Get("monokai")
 	}
 
-	b := make(map[string]bool, len(keys))
-
-	for _, k := range keys {
-		b[k] = true
+	iterator, err := lexer.Tokenise(nil, code)
+	if err != nil {
+		return code
 	}
-
-	return b
-}()
+	var sb strings.Builder
+	err = formatter.Format(&sb, style, iterator)
+	if err != nil {
+		return code
+	}
+	return strings.TrimSpace(sb.String())
+}
 
 // collectLocalFuncs() collects name of f()
 func collectLocalFuncs(file *syntax.File) map[string]bool {
@@ -47,15 +52,15 @@ func collectLocalFuncs(file *syntax.File) map[string]bool {
 	return localFuncs
 }
 
-// collectCommands() collects command names from CallExpr nodes with filtering:
-//
-// - not built-in commands
-//
-// - not local functions
-//
-// - not starting with '-'
-func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string]struct{} {
-	commands := make(map[string]struct{})
+type posInfo struct {
+	line uint
+	col  uint
+	len  uint
+}
+
+// collectCommands() collects command names from CallExpr nodes with filtering
+func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][]posInfo {
+	commands := make(map[string][]posInfo)
 
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch x := node.(type) {
@@ -65,7 +70,11 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string]s
 					cmd := part.Value
 
 					if !builtins[cmd] && !localFuncs[cmd] {
-						commands[cmd] = struct{}{}
+						commands[cmd] = append(commands[cmd], posInfo{
+							line: x.Pos().Line(),
+							col:  x.Pos().Col(),
+							len:  uint(len(cmd)),
+						})
 					}
 				}
 			}
@@ -76,8 +85,8 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string]s
 	return commands
 }
 
-// Do analyzes the given shell script file and returns a set of external command names used in it.
-func Do(f *os.File) (map[string]struct{}, error) {
+// Do analyzes the given shell script file and returns a map of command names to their positions.
+func Do(f *os.File) (map[string][]posInfo, error) {
 	parser := syntax.NewParser()
 	file, err := parser.Parse(f, "")
 	if err != nil {
@@ -86,4 +95,226 @@ func Do(f *os.File) (map[string]struct{}, error) {
 
 	localFuncs := collectLocalFuncs(file)
 	return collectCommands(file, localFuncs), nil
+}
+
+// Occurrence represents a single occurrence of a command.
+type Occurrence struct {
+	Line     int
+	Col      int
+	Len      int
+	FullLine string
+}
+
+// Result maps filename to its command occurrences: filename -> {cmd: []Occurrence}
+type Result map[string]map[string][]Occurrence
+
+const (
+	colorReset     = "\033[0m"
+	colorCyan      = "\033[36m"
+	colorGreen     = "\033[32m"
+	colorYellow    = "\033[33m"
+	colorBold      = "\033[1m"
+	colorUnderline = "\033[4m"
+)
+
+// Format returns a formatted string representation of the result.
+func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName, styleName string) string {
+	var sb strings.Builder
+
+	globalLineWidth := 0
+	if showPos {
+		maxLine := 0
+		for _, cmds := range r {
+			for _, occs := range cmds {
+				for _, occ := range occs {
+					if occ.Line > maxLine {
+						maxLine = occ.Line
+					}
+				}
+			}
+		}
+		globalLineWidth = len(fmt.Sprintf("%d", maxLine))
+	}
+
+	paths := slices.Sorted(maps.Keys(r))
+	for _, path := range paths {
+		if isDirectory {
+			p := path
+			if useColor {
+				p = colorCyan + path + colorReset
+			}
+			sb.WriteString(p + "\n")
+		}
+
+		indent := ""
+		if isDirectory {
+			indent = "  "
+		}
+
+		cmds := slices.Sorted(maps.Keys(r[path]))
+		for _, cmd := range cmds {
+			occs := r[path][cmd]
+
+			c := cmd
+			if useColor {
+				c = colorBold + cmd + colorReset
+			}
+
+			suffix := ""
+			colon := ":"
+			if useColor {
+				colon = colorYellow + ":" + colorReset
+			}
+
+			if showCount || showPos {
+				suffix = colon
+				if showCount {
+					count := fmt.Sprintf(" %d", len(occs))
+					if useColor {
+						count = colorGreen + count + colorReset
+					}
+					suffix += count
+				}
+			}
+
+			fmt.Fprintf(&sb, "%s%s%s\n", indent, c, suffix)
+
+			if showPos {
+				for _, occ := range occs {
+					ln := fmt.Sprintf("%*d", globalLineWidth, occ.Line)
+					if useColor {
+						ln = colorGreen + ln + colorReset
+					}
+					cln := ":"
+					if useColor {
+						cln = colorYellow + ":" + colorReset
+					}
+
+					content := occ.FullLine
+					if useColor {
+						start := occ.Col - 1
+						end := start + occ.Len
+						if start >= 0 && end <= len(content) {
+							// Highlight by wrapping the command with underline/bold before chroma
+							// or just use a placeholder. Chroma might strip unknown ANSI.
+							// Let's use a more robust way: highlight the whole line,
+							// but since we want the command specifically emphasized,
+							// we'll underline it in the raw string if we are not using chroma,
+							// or just let chroma handle it.
+							// User asked for "強調表示", so let's use underline.
+							content = content[:start] + colorUnderline + content[start:end] + colorReset + content[end:]
+						}
+						content = highlight(content, lexerName, styleName)
+					} else {
+						content = strings.TrimSpace(content)
+					}
+					fmt.Fprintf(&sb, "%s  %s%s  %s\n", indent, ln, cln, content)
+				}
+			}
+		}
+	}
+	return sb.String()
+}
+
+var reShell = regexp.MustCompile(`\.(b|z)?sh$`)
+
+// Scan recursively scans the target path (file or directory) and returns the aggregated results.
+func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Result, error) {
+	info, err := os.Stat(target)
+	if err != nil {
+		return nil, err
+	}
+
+	ignores := make(map[string]bool)
+	for _, cmd := range extraIgnores {
+		ignores[cmd] = true
+	}
+
+	res := make(Result)
+
+	processFile := func(path string) {
+		if !reShell.MatchString(path) {
+			return
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+
+		cmdPositions, err := Do(f)
+		if err != nil || len(cmdPositions) == 0 {
+			return
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		lines := strings.Split(string(content), "\n")
+
+		fileOccs := make(map[string][]Occurrence)
+		for cmd, ps := range cmdPositions {
+			if noCoreutils && coreutils[cmd] {
+				continue
+			}
+			if noCommon && common[cmd] {
+				continue
+			}
+			if ignores[cmd] {
+				continue
+			}
+			for _, p := range ps {
+				if p.line > 0 && p.line <= uint(len(lines)) {
+					fileOccs[cmd] = append(fileOccs[cmd], Occurrence{
+						Line:     int(p.line),
+						Col:      int(p.col),
+						Len:      int(p.len),
+						FullLine: lines[p.line-1], // Keep original for correct indexing
+					})
+				}
+			}
+		}
+		if len(fileOccs) > 0 {
+			res[path] = fileOccs
+		}
+	}
+
+	if !info.IsDir() {
+		processFile(target)
+		return res, nil
+	}
+
+	err = filepath.WalkDir(target, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			if d.Name() != "." && d.Name() != ".." && d.Name()[0] == '.' {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		processFile(path)
+		return nil
+	})
+
+	return res, err
+}
+
+// GetBuiltins returns a sorted list of shell built-in commands.
+func GetBuiltins() []string {
+	return slices.Sorted(maps.Keys(builtins))
+}
+
+// GetCoreutils returns a sorted list of GNU Coreutils commands.
+func GetCoreutils() []string {
+	return slices.Sorted(maps.Keys(coreutils))
+}
+
+// GetCommon returns a sorted list of common shell commands.
+func GetCommon() []string {
+	return slices.Sorted(maps.Keys(common))
 }
