@@ -1,2 +1,2 @@
 echo "hello"
-curl google.com
+curl google.invalid

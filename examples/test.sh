@@ -22,7 +22,7 @@ if [ "$FILE_COUNT" -gt 0 ]; then
     find . -name "*.tmp" -print0 | xargs -0 rm -f
 else
     # 外部コマンド呼び出し (curl, jq)
-    RESPONSE=$(curl -s https://api.example.com/status)
+    RESPONSE=$(curl -s https://api.example.invalid/status)
     echo "$RESPONSE" | jq '.status'
 fi
 

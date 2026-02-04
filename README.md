@@ -5,7 +5,7 @@
 ## Installation
 
 ```sh
-go install github.com/nymphium/depextify@latest
+go install github.com/nymphium/depextify/cmd/depextify@latest
 ```
 
 ## Usage
@@ -20,6 +20,8 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 
 - `-count`: Show the number of occurrences for each command.
 - `-pos`: Show the file position (line number) and the full line where each command is used.
+- `-hidden`: Scan hidden files and directories (default: ignore).
+- `-[no-]builtin`: Ignore/include shell built-in commands (default: ignore).
 - `-[no-]coreutils`: Ignore/include GNU coreutils in the output (default: ignore).
 - `-[no-]common`: Ignore/include common tools (grep, sed, awk, etc.) in the output (default: ignore).
 - `-[no-]color`: Enable/disable colored output (default: auto).
@@ -52,7 +54,7 @@ tee: 1
 ### Include coreutils and common tools
 
 ```sh
-$ depextify -coreutils -common examples/test.sh
+$ depextify -builtin -coreutils -common examples/test.sh
 curl
 date
 find

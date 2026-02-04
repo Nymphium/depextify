@@ -13,11 +13,12 @@ func TestExamples(t *testing.T) {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
-	examplesDir := filepath.Join(wd, "examples")
+	// Since we are in cmd/depextify/ directory during test
+	examplesDir := filepath.Join(wd, "..", "..", "examples")
 
 	t.Run("entire examples directory", func(t *testing.T) {
-		// Scan all (no-coreutils=false, no-common=false)
-		res, err := depextify.Scan(examplesDir, false, false, nil)
+		// Scan all (no-builtin=false, no-coreutils=false, no-common=false, showHidden=false)
+		res, err := depextify.Scan(examplesDir, false, false, false, false, nil)
 		require.NoError(t, err)
 
 		// Flatten results for easy checking
@@ -40,7 +41,7 @@ func TestExamples(t *testing.T) {
 			t.Skip("examples/dir_test does not exist")
 		}
 
-		res, err := depextify.Scan(dirTestPath, false, false, nil)
+		res, err := depextify.Scan(dirTestPath, false, false, false, false, nil)
 		require.NoError(t, err)
 
 		allCommands := make(map[string]struct{})

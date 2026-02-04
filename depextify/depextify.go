@@ -1,6 +1,7 @@
 package depextify
 
 import (
+	"bufio"
 	"fmt"
 	"maps"
 	"os"
@@ -97,7 +98,9 @@ type posInfo struct {
 	len  uint
 }
 
-// collectCommands() collects command names from CallExpr nodes with filtering
+// collectCommands() collects command names from CallExpr nodes with filtering:
+// - not local functions
+// - not starting with '-'
 func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][]posInfo {
 	commands := make(map[string][]posInfo)
 
@@ -108,7 +111,7 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][
 				if part, ok := x.Args[0].Parts[0].(*syntax.Lit); ok {
 					cmd := part.Value
 
-					if !builtins[cmd] && !localFuncs[cmd] {
+					if !localFuncs[cmd] && !strings.HasPrefix(cmd, "-") {
 						commands[cmd] = append(commands[cmd], posInfo{
 							line: x.Pos().Line(),
 							col:  x.Pos().Col(),
@@ -248,10 +251,31 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 	return sb.String()
 }
 
-var reShell = regexp.MustCompile(`\.(b|z)?sh$`)
+var reShellExt = regexp.MustCompile(`\.(b|z|k|da)?sh$`)
+var reShebang = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
+
+func isShellFile(path string) bool {
+	if reShellExt.MatchString(path) {
+		return true
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	line, _, err := reader.ReadLine()
+	if err != nil {
+		return false
+	}
+
+	return reShebang.MatchString(string(line))
+}
 
 // Scan recursively scans the target path (file or directory) and returns the aggregated results.
-func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Result, error) {
+func Scan(target string, noBuiltins, noCoreutils, noCommon, showHidden bool, extraIgnores []string) (Result, error) {
 	info, err := os.Stat(target)
 	if err != nil {
 		return nil, err
@@ -264,8 +288,8 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 
 	res := make(Result)
 
-	processFile := func(path string) {
-		if !reShell.MatchString(path) {
+	processFile := func(path string, skipCheck bool) {
+		if !skipCheck && !isShellFile(path) {
 			return
 		}
 		path = filepath.Clean(path)
@@ -280,6 +304,7 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 			return
 		}
 
+		// Re-read file to get full lines
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return
@@ -288,6 +313,9 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 
 		fileOccs := make(map[string][]Occurrence)
 		for cmd, ps := range cmdPositions {
+			if noBuiltins && builtins[cmd] {
+				continue
+			}
 			if noCoreutils && coreutils[cmd] {
 				continue
 			}
@@ -314,26 +342,71 @@ func Scan(target string, noCoreutils, noCommon bool, extraIgnores []string) (Res
 	}
 
 	if !info.IsDir() {
-		processFile(target)
+		processFile(target, true)
 		return res, nil
 	}
 
-	err = filepath.WalkDir(target, func(path string, d os.DirEntry, err error) error {
+	// We use a custom walker to follow symlinks if they are directories
+	var walk func(string) error
+	visited := make(map[string]bool)
+
+	walk = func(path string) error {
+		path = filepath.Clean(path)
+		if visited[path] {
+			return nil
+		}
+		visited[path] = true
+
+		entries, err := os.ReadDir(path)
 		if err != nil {
 			return err
 		}
 
-		if d.IsDir() {
-			if d.Name() != "." && d.Name() != ".." && d.Name()[0] == '.' {
-				return filepath.SkipDir
+		for _, d := range entries {
+			name := d.Name()
+			if name == "." || name == ".." {
+				continue
 			}
-			return nil
+			if !showHidden && name[0] == '.' {
+				continue
+			}
+
+			fullPath := filepath.Join(path, name)
+			info, err := d.Info()
+			if err != nil {
+				continue
+			}
+
+			// If it's a symlink, resolve it to see if it's a directory
+			if info.Mode()&os.ModeSymlink != 0 {
+				resolved, err := filepath.EvalSymlinks(fullPath)
+				if err != nil {
+					continue
+				}
+				info, err = os.Stat(resolved)
+				if err != nil {
+					continue
+				}
+				if info.IsDir() {
+					if err := walk(fullPath); err != nil {
+						return err
+					}
+					continue
+				}
+			}
+
+			if info.IsDir() {
+				if err := walk(fullPath); err != nil {
+					return err
+				}
+			} else {
+				processFile(fullPath, false)
+			}
 		}
-
-		processFile(path)
 		return nil
-	})
+	}
 
+	err = walk(target)
 	return res, err
 }
 

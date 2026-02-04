@@ -9,11 +9,10 @@
     };
   };
   outputs =
-    {
+    inputs@{
       self,
       flake-utils,
       nixpkgs,
-      gomod2nix,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -27,14 +26,18 @@
         formatter = pkgs.nixfmt-tree.override {
           settings.formatter.nixfmt.includes = [ "*.nix" ];
         };
+
+        gomod2nix = inputs.gomod2nix.legacyPackages.${system}.gomod2nix;
       in
       {
-        packages.default = gomod2nix.legacyPackages.${system}.buildGoApplication {
+        packages.default = gomod2nix.buildGoApplication {
+          inherit go;
           pname = "depextify";
           version = "0.1.0";
           src = ./.;
           modules = ./gomod2nix.toml;
-          go = go;
+          subPackages = [ "cmd/depextify" ];
+          doCheck = false;
         };
 
         legacyPackages = pkgs;
@@ -49,7 +52,7 @@
 
             pkgs.nil
             formatter
-            gomod2nix.legacyPackages.${system}.gomod2nix
+            gomod2nix
           ];
         };
 

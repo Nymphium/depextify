@@ -18,8 +18,9 @@ func TestDo(t *testing.T) {
 			name:    "simple case",
 			content: "echo \"hello\"\nls -l\ncat file.txt\n",
 			expected: map[string][]posInfo{
-				"ls":  {{line: 2, col: 1, len: 2}},
-				"cat": {{line: 3, col: 1, len: 3}},
+				"echo": {{line: 1, col: 1, len: 4}},
+				"ls":   {{line: 2, col: 1, len: 2}},
+				"cat":  {{line: 3, col: 1, len: 3}},
 			},
 		},
 		{
@@ -89,25 +90,42 @@ func TestScan(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	script1Path := filepath.Join(tmpDir, "script1.sh")
-	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file"), 0600))
+	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file\necho hello"), 0600))
 
 	t.Run("scan all", func(t *testing.T) {
-		res, err := Scan(tmpDir, false, false, nil)
+		res, err := Scan(tmpDir, false, false, false, false, nil)
 		require.NoError(t, err)
 		require.Contains(t, res, script1Path)
 		require.Contains(t, res[script1Path], "ls")
 		require.Contains(t, res[script1Path], "cat")
 		require.Contains(t, res[script1Path], "curl")
 		require.Contains(t, res[script1Path], "grep")
+		require.Contains(t, res[script1Path], "echo")
 	})
 
-	t.Run("scan with extra ignores", func(t *testing.T) {
-		res, err := Scan(tmpDir, false, false, []string{"curl", "ls"})
+	t.Run("scan no builtins", func(t *testing.T) {
+		res, err := Scan(tmpDir, true, false, false, false, nil)
 		require.NoError(t, err)
 		require.Contains(t, res, script1Path)
-		require.NotContains(t, res[script1Path], "ls")
-		require.Contains(t, res[script1Path], "cat")
-		require.NotContains(t, res[script1Path], "curl")
-		require.Contains(t, res[script1Path], "grep")
+		require.NotContains(t, res[script1Path], "echo")
+		require.Contains(t, res[script1Path], "ls")
+	})
+
+	t.Run("scan hidden", func(t *testing.T) {
+		hiddenDir := filepath.Join(tmpDir, ".hidden")
+		require.NoError(t, os.Mkdir(hiddenDir, 0755))
+		hiddenScript := filepath.Join(hiddenDir, "test.sh")
+		require.NoError(t, os.WriteFile(hiddenScript, []byte("ls"), 0600))
+
+		// Should not contain hidden by default
+		res, err := Scan(tmpDir, false, false, false, false, nil)
+		require.NoError(t, err)
+		require.NotContains(t, res, hiddenScript)
+
+		// Should contain hidden with showHidden=true
+		res, err = Scan(tmpDir, false, false, false, true, nil)
+		require.NoError(t, err)
+		require.Contains(t, res, hiddenScript)
 	})
 }
+

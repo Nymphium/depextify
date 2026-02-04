@@ -11,11 +11,7 @@ nix build .#default
 nix run . -- examples/test.sh
 ```
 
-# depextify Improvement Proposals
-
-Here are some ideas for improving `depextify`:
-
-### Completed Improvements
-
-- [x] **Externalize and Refine the Built-in Command List**: Moved to `depextify/lists.go` and expanded with zsh built-ins and common tools.
-- [x] **Add Line Number Information**: Implemented via the `-pos` flag, which also includes line content and syntax highlighting.
+`gomod2nix.toml` must be updated after `go.mod` is updated:
+```sh
+$ gomod2nix
+```
