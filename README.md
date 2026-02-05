@@ -18,8 +18,18 @@
 
 ## Installation
 
+### Go
+
 ```sh
 go install github.com/nymphium/depextify/cmd/depextify@latest
+```
+
+### Nix
+
+You can run `depextify` directly without installing it using Nix:
+
+```sh
+nix run github:nymphium/depextify -- examples/test.sh
 ```
 
 ## Usage
