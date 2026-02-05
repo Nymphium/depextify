@@ -1,0 +1,5 @@
+title: depextify
+description: Dependency Extractor for Shell Scripts and Config Files
+theme: jekyll-theme-slate
+plugins:
+  - jekyll-seo-tag
