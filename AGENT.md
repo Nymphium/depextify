@@ -15,3 +15,11 @@ nix run . -- examples/test.sh
 ```sh
 $ gomod2nix
 ```
+
+# Development Workflow
+
+When you have completed your changes, always run the linter and tests to ensure code quality:
+```sh
+golangci-lint run
+gotest ./...
+```

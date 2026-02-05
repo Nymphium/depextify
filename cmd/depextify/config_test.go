@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,5 +50,27 @@ func TestParseFlags(t *testing.T) {
 		_, err := parseFlags([]string{"-count"})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no target specified")
+	})
+}
+
+func TestPrintCategory(t *testing.T) {
+	commands := []string{"cmd1", "cmd2", "cmd3", "cmd4", "cmd5", "cmd6"}
+	
+	t.Run("no color", func(t *testing.T) {
+		var buf bytes.Buffer
+		printCategory(&buf, "Test", commands, false)
+		output := buf.String()
+		require.Contains(t, output, "Test:")
+		require.Contains(t, output, "cmd1, cmd2, cmd3, cmd4, cmd5")
+		require.Contains(t, output, "cmd6")
+		require.NotContains(t, output, "\033[")
+	})
+
+	t.Run("with color", func(t *testing.T) {
+		var buf bytes.Buffer
+		printCategory(&buf, "Test", commands, true)
+		output := buf.String()
+		require.Contains(t, output, "\033[36mTest\033[0m:")
+		require.Contains(t, output, "cmd1, cmd2, cmd3, cmd4, cmd5")
 	})
 }

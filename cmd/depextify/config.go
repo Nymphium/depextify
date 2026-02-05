@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -134,18 +135,18 @@ func parseFlags(args []string) (*config, error) {
 	return cfg, nil
 }
 
-func printCategory(name string, commands []string, useColor bool) {
+func printCategory(w io.Writer, name string, commands []string, useColor bool) {
 	header := name + ":"
 	if useColor {
 		header = "\033[36m" + name + "\033[0m" + ":"
 	}
-	fmt.Println(header)
+	_, _ = fmt.Fprintln(w, header)
 	for i := 0; i < len(commands); i += 5 {
 		end := i + 5
 		if end > len(commands) {
 			end = len(commands)
 		}
-		fmt.Printf("  %s\n", strings.Join(commands[i:end], ", "))
+		_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(commands[i:end], ", "))
 	}
-	fmt.Println()
+	_, _ = fmt.Fprintln(w)
 }

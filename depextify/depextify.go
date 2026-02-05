@@ -3,6 +3,7 @@ package depextify
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -16,7 +17,53 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-var formatter = formatters.TTY256
+// Config holds the configuration for scanning and formatting.
+type Config struct {
+	NoBuiltins   bool
+	NoCoreutils  bool
+	NoCommon     bool
+	ShowHidden   bool
+	ExtraIgnores []string
+
+	ShowCount   bool
+	ShowPos     bool
+	UseColor    bool
+	LexerName   string
+	StyleName   string
+	IsDirectory bool
+}
+
+// Occurrence represents a single occurrence of a command.
+type Occurrence struct {
+	Line     int
+	Col      int
+	Len      int
+	FullLine string
+}
+
+// Result maps filename to its command occurrences: filename -> {cmd: []Occurrence}
+type Result map[string]map[string][]Occurrence
+
+type posInfo struct {
+	line uint
+	col  uint
+	len  uint
+}
+
+const (
+	colorReset  = "\033[0m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBold   = "\033[1m"
+	colorRed    = "\033[31m"
+)
+
+var (
+	formatter  = formatters.TTY256
+	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`)
+	reShebang  = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
+)
 
 func emphasize(code, lexerName, styleName string) string {
 	lexer := lexers.Get(lexerName)
@@ -92,12 +139,6 @@ func collectLocalFuncs(file *syntax.File) map[string]bool {
 	return localFuncs
 }
 
-type posInfo struct {
-	line uint
-	col  uint
-	len  uint
-}
-
 // collectCommands() collects command names from CallExpr nodes with filtering:
 // - not local functions
 // - not starting with '-'
@@ -139,32 +180,12 @@ func Do(f *os.File) (map[string][]posInfo, error) {
 	return collectCommands(file, localFuncs), nil
 }
 
-// Occurrence represents a single occurrence of a command.
-type Occurrence struct {
-	Line     int
-	Col      int
-	Len      int
-	FullLine string
-}
-
-// Result maps filename to its command occurrences: filename -> {cmd: []Occurrence}
-type Result map[string]map[string][]Occurrence
-
-const (
-	colorReset  = "\033[0m"
-	colorCyan   = "\033[36m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBold   = "\033[1m"
-	colorRed    = "\033[31m"
-)
-
 // Format returns a formatted string representation of the result.
-func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName, styleName string) string {
+func (r Result) Format(c *Config) string {
 	var sb strings.Builder
 
 	globalLineWidth := 0
-	if showPos {
+	if c.ShowPos {
 		maxLine := 0
 		for _, cmds := range r {
 			for _, occs := range cmds {
@@ -180,16 +201,16 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 
 	paths := slices.Sorted(maps.Keys(r))
 	for _, path := range paths {
-		if isDirectory {
+		if c.IsDirectory {
 			p := path
-			if useColor {
+			if c.UseColor {
 				p = colorCyan + path + colorReset
 			}
 			sb.WriteString(p + "\n")
 		}
 
 		indent := ""
-		if isDirectory {
+		if c.IsDirectory {
 			indent = "  "
 		}
 
@@ -197,46 +218,46 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 		for _, cmd := range cmds {
 			occs := r[path][cmd]
 
-			c := cmd
-			if useColor {
-				c = colorBold + cmd + colorReset
+			cCmd := cmd
+			if c.UseColor {
+				cCmd = colorBold + cmd + colorReset
 			}
 
 			suffix := ""
 			colon := ":"
-			if useColor {
+			if c.UseColor {
 				colon = colorYellow + ":" + colorReset
 			}
 
-			if showCount || showPos {
+			if c.ShowCount || c.ShowPos {
 				suffix = colon
-				if showCount {
+				if c.ShowCount {
 					count := fmt.Sprintf(" %d", len(occs))
-					if useColor {
+					if c.UseColor {
 						count = colorGreen + count + colorReset
 					}
 					suffix += count
 				}
 			}
 
-			fmt.Fprintf(&sb, "%s%s%s\n", indent, c, suffix)
+			fmt.Fprintf(&sb, "%s%s%s\n", indent, cCmd, suffix)
 
-			if showPos {
+			if c.ShowPos {
 				for _, occ := range occs {
 					ln := fmt.Sprintf("%*d", globalLineWidth, occ.Line)
-					if useColor {
+					if c.UseColor {
 						ln = colorGreen + ln + colorReset
 					}
 					cln := ":"
-					if useColor {
+					if c.UseColor {
 						cln = colorYellow + ":" + colorReset
 					}
 
 					content := occ.FullLine
-					if useColor {
+					if c.UseColor {
 						start := occ.Col - 1
 						end := start + occ.Len
-						content = emphasize(content, lexerName, styleName)
+						content = emphasize(content, c.LexerName, c.StyleName)
 						if start >= 0 && end <= len(occ.FullLine) {
 							content = applyHighlight(content, start, end)
 						}
@@ -251,9 +272,6 @@ func (r Result) Format(showCount, showPos, isDirectory, useColor bool, lexerName
 	return sb.String()
 }
 
-var reShellExt = regexp.MustCompile(`\.(b|z|k|da)?sh$`)
-var reShebang = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
-
 func isShellFile(path string) bool {
 	if reShellExt.MatchString(path) {
 		return true
@@ -263,7 +281,7 @@ func isShellFile(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReader(f)
 	line, _, err := reader.ReadLine()
@@ -274,140 +292,136 @@ func isShellFile(path string) bool {
 	return reShebang.MatchString(string(line))
 }
 
+func (c *Config) calculateFileOccurrences(cmdPositions map[string][]posInfo, lines []string, ignores map[string]bool) map[string][]Occurrence {
+	fileOccs := make(map[string][]Occurrence)
+	for cmd, ps := range cmdPositions {
+		if (c.NoBuiltins && builtins[cmd]) || (c.NoCoreutils && coreutils[cmd]) || (c.NoCommon && common[cmd]) || ignores[cmd] {
+			continue
+		}
+		for _, p := range ps {
+			if p.line > 0 && p.line <= uint(len(lines)) {
+				fileOccs[cmd] = append(fileOccs[cmd], Occurrence{
+					Line:     toInt(p.line),
+					Col:      toInt(p.col),
+					Len:      toInt(p.len),
+					FullLine: lines[p.line-1],
+				})
+			}
+		}
+	}
+	return fileOccs
+}
+
+func (c *Config) processFile(path string, skipCheck bool, ignores map[string]bool, res Result) {
+	if !skipCheck && !isShellFile(path) {
+		return
+	}
+	path = filepath.Clean(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	cmdPositions, err := Do(f)
+	if err != nil || len(cmdPositions) == 0 {
+		return
+	}
+
+	if _, err := f.Seek(0, 0); err != nil {
+		return
+	}
+	content, err := io.ReadAll(f)
+	if err != nil {
+		content, err = os.ReadFile(path)
+		if err != nil {
+			return
+		}
+	}
+	lines := strings.Split(string(content), "\n")
+
+	fileOccs := c.calculateFileOccurrences(cmdPositions, lines, ignores)
+	if len(fileOccs) > 0 {
+		res[path] = fileOccs
+	}
+}
+
 // Scan recursively scans the target path (file or directory) and returns the aggregated results.
-func Scan(target string, noBuiltins, noCoreutils, noCommon, showHidden bool, extraIgnores []string) (Result, error) {
+func (c *Config) Scan(target string) (Result, error) {
 	info, err := os.Stat(target)
 	if err != nil {
 		return nil, err
 	}
 
+	c.IsDirectory = info.IsDir()
+
 	ignores := make(map[string]bool)
-	for _, cmd := range extraIgnores {
+	for _, cmd := range c.ExtraIgnores {
 		ignores[cmd] = true
 	}
 
 	res := make(Result)
 
-	processFile := func(path string, skipCheck bool) {
-		if !skipCheck && !isShellFile(path) {
-			return
-		}
-		path = filepath.Clean(path)
-		f, err := os.Open(path)
-		if err != nil {
-			return
-		}
-		defer func() { _ = f.Close() }()
-
-		cmdPositions, err := Do(f)
-		if err != nil || len(cmdPositions) == 0 {
-			return
-		}
-
-		// Re-read file to get full lines
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return
-		}
-		lines := strings.Split(string(content), "\n")
-
-		fileOccs := make(map[string][]Occurrence)
-		for cmd, ps := range cmdPositions {
-			if noBuiltins && builtins[cmd] {
-				continue
-			}
-			if noCoreutils && coreutils[cmd] {
-				continue
-			}
-			if noCommon && common[cmd] {
-				continue
-			}
-			if ignores[cmd] {
-				continue
-			}
-			for _, p := range ps {
-				if p.line > 0 && p.line <= uint(len(lines)) {
-					fileOccs[cmd] = append(fileOccs[cmd], Occurrence{
-						Line:     toInt(p.line),
-						Col:      toInt(p.col),
-						Len:      toInt(p.len),
-						FullLine: lines[p.line-1],
-					})
-				}
-			}
-		}
-		if len(fileOccs) > 0 {
-			res[path] = fileOccs
-		}
-	}
-
 	if !info.IsDir() {
-		processFile(target, true)
+		c.processFile(target, true, ignores, res)
 		return res, nil
 	}
 
-	// We use a custom walker to follow symlinks if they are directories
-	var walk func(string) error
 	visited := make(map[string]bool)
+	err = c.walkRecursive(target, ignores, res, visited)
+	return res, err
+}
 
-	walk = func(path string) error {
-		path = filepath.Clean(path)
-		if visited[path] {
-			return nil
+func (c *Config) walkRecursive(path string, ignores map[string]bool, res Result, visited map[string]bool) error {
+	path = filepath.Clean(path)
+	if visited[path] {
+		return nil
+	}
+	visited[path] = true
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+
+	for _, d := range entries {
+		name := d.Name()
+		if name == "." || name == ".." || (!c.ShowHidden && name[0] == '.') {
+			continue
 		}
-		visited[path] = true
 
-		entries, err := os.ReadDir(path)
+		fullPath := filepath.Join(path, name)
+		info, err := d.Info()
 		if err != nil {
-			return err
+			continue
 		}
 
-		for _, d := range entries {
-			name := d.Name()
-			if name == "." || name == ".." {
-				continue
-			}
-			if !showHidden && name[0] == '.' {
-				continue
-			}
-
-			fullPath := filepath.Join(path, name)
-			info, err := d.Info()
+		if info.Mode()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(fullPath)
 			if err != nil {
 				continue
 			}
-
-			// If it's a symlink, resolve it to see if it's a directory
-			if info.Mode()&os.ModeSymlink != 0 {
-				resolved, err := filepath.EvalSymlinks(fullPath)
-				if err != nil {
-					continue
-				}
-				info, err = os.Stat(resolved)
-				if err != nil {
-					continue
-				}
-				if info.IsDir() {
-					if err := walk(fullPath); err != nil {
-						return err
-					}
-					continue
-				}
+			info, err = os.Stat(resolved)
+			if err != nil {
+				continue
 			}
-
 			if info.IsDir() {
-				if err := walk(fullPath); err != nil {
+				if err := c.walkRecursive(fullPath, ignores, res, visited); err != nil {
 					return err
 				}
-			} else {
-				processFile(fullPath, false)
+				continue
 			}
 		}
-		return nil
-	}
 
-	err = walk(target)
-	return res, err
+		if info.IsDir() {
+			if err := c.walkRecursive(fullPath, ignores, res, visited); err != nil {
+				return err
+			}
+		} else {
+			c.processFile(fullPath, false, ignores, res)
+		}
+	}
+	return nil
 }
 
 // GetBuiltins returns a sorted list of shell built-in commands.

@@ -18,7 +18,8 @@ func TestExamples(t *testing.T) {
 
 	t.Run("entire examples directory", func(t *testing.T) {
 		// Scan all (no-builtin=false, no-coreutils=false, no-common=false, showHidden=false)
-		res, err := depextify.Scan(examplesDir, false, false, false, false, nil)
+		config := &depextify.Config{}
+		res, err := config.Scan(examplesDir)
 		require.NoError(t, err)
 
 		// Flatten results for easy checking
@@ -41,7 +42,8 @@ func TestExamples(t *testing.T) {
 			t.Skip("examples/dir_test does not exist")
 		}
 
-		res, err := depextify.Scan(dirTestPath, false, false, false, false, nil)
+		config := &depextify.Config{}
+		res, err := config.Scan(dirTestPath)
 		require.NoError(t, err)
 
 		allCommands := make(map[string]struct{})

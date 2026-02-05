@@ -35,11 +35,11 @@ func main() {
 			t = strings.TrimSpace(t)
 			switch t {
 			case "builtins":
-				printCategory("builtins", depextify.GetBuiltins(), cfg.useColor)
+				printCategory(os.Stdout, "builtins", depextify.GetBuiltins(), cfg.useColor)
 			case "coreutils":
-				printCategory("coreutils", depextify.GetCoreutils(), cfg.useColor)
+				printCategory(os.Stdout, "coreutils", depextify.GetCoreutils(), cfg.useColor)
 			case "common":
-				printCategory("common", depextify.GetCommon(), cfg.useColor)
+				printCategory(os.Stdout, "common", depextify.GetCommon(), cfg.useColor)
 			default:
 				fmt.Fprintf(os.Stderr, "Warning: unknown category %q\n", t)
 			}
@@ -47,22 +47,29 @@ func main() {
 		return
 	}
 
-	info, err := os.Stat(cfg.target)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
 	extraIgnores := []string{}
 	if cfg.ignores != "" {
 		extraIgnores = strings.Split(cfg.ignores, ",")
 	}
 
-	results, err := depextify.Scan(cfg.target, cfg.ignoreBuiltins, cfg.ignoreCoreutils, cfg.ignoreCommon, cfg.showHidden, extraIgnores)
+	scanConfig := &depextify.Config{
+		NoBuiltins:   cfg.ignoreBuiltins,
+		NoCoreutils:  cfg.ignoreCoreutils,
+		NoCommon:     cfg.ignoreCommon,
+		ShowHidden:   cfg.showHidden,
+		ExtraIgnores: extraIgnores,
+		ShowCount:    cfg.showCount,
+		ShowPos:      cfg.showPos,
+		UseColor:     cfg.useColor,
+		LexerName:    cfg.lexer,
+		StyleName:    cfg.style,
+	}
+
+	results, err := scanConfig.Scan(cfg.target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Print(results.Format(cfg.showCount, cfg.showPos, info.IsDir(), cfg.useColor, cfg.lexer, cfg.style))
+	fmt.Print(results.Format(scanConfig))
 }
