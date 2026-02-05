@@ -100,6 +100,41 @@ func TestResult_Format(t *testing.T) {
 	})
 }
 
+func TestResult_JSON(t *testing.T) {
+	res := ScanResult{
+		"a.sh": {
+			"ls": {{Line: 1, Col: 1, Len: 2, FullLine: "ls"}},
+			"cat": {{Line: 2, Col: 1, Len: 3, FullLine: "cat"}},
+		},
+	}
+
+	t.Run("default (list)", func(t *testing.T) {
+		cfg := &Config{}
+		jsonStr, err := res.JSON(cfg)
+		require.NoError(t, err)
+		require.Contains(t, jsonStr, `"ls"`)
+		require.Contains(t, jsonStr, `"cat"`)
+		require.NotContains(t, jsonStr, `"Line"`)
+	})
+
+	t.Run("-count", func(t *testing.T) {
+		cfg := &Config{ShowCount: true}
+		jsonStr, err := res.JSON(cfg)
+		require.NoError(t, err)
+		require.Contains(t, jsonStr, `"ls": 1`)
+		require.Contains(t, jsonStr, `"cat": 1`)
+		require.NotContains(t, jsonStr, `"Line"`)
+	})
+
+	t.Run("-pos", func(t *testing.T) {
+		cfg := &Config{ShowPos: true}
+		jsonStr, err := res.JSON(cfg)
+		require.NoError(t, err)
+		require.Contains(t, jsonStr, `"Line": 1`)
+		require.Contains(t, jsonStr, `"FullLine": "ls"`)
+	})
+}
+
 func TestIsShellFile(t *testing.T) {
 	tmpDir := t.TempDir()
 

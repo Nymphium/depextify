@@ -216,8 +216,34 @@ func (r ScanResult) Format(c *Config) string {
 }
 
 // JSON returns the JSON encoding of the result.
-func (r ScanResult) JSON() (string, error) {
-	b, err := json.MarshalIndent(r, "", "  ")
+func (r ScanResult) JSON(c *Config) (string, error) {
+	var data interface{} = r
+
+	if !c.ShowPos {
+		if c.ShowCount {
+			summary := make(map[string]map[string]int)
+			for file, cmds := range r {
+				summary[file] = make(map[string]int)
+				for cmd, occs := range cmds {
+					summary[file][cmd] = len(occs)
+				}
+			}
+			data = summary
+		} else {
+			list := make(map[string][]string)
+			for file, cmds := range r {
+				keys := make([]string, 0, len(cmds))
+				for cmd := range cmds {
+					keys = append(keys, cmd)
+				}
+				slices.Sort(keys)
+				list[file] = keys
+			}
+			data = list
+		}
+	}
+
+	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -225,8 +251,34 @@ func (r ScanResult) JSON() (string, error) {
 }
 
 // YAML returns the YAML encoding of the result.
-func (r ScanResult) YAML() (string, error) {
-	b, err := yaml.Marshal(r)
+func (r ScanResult) YAML(c *Config) (string, error) {
+	var data interface{} = r
+
+	if !c.ShowPos {
+		if c.ShowCount {
+			summary := make(map[string]map[string]int)
+			for file, cmds := range r {
+				summary[file] = make(map[string]int)
+				for cmd, occs := range cmds {
+					summary[file][cmd] = len(occs)
+				}
+			}
+			data = summary
+		} else {
+			list := make(map[string][]string)
+			for file, cmds := range r {
+				keys := make([]string, 0, len(cmds))
+				for cmd := range cmds {
+					keys = append(keys, cmd)
+				}
+				slices.Sort(keys)
+				list[file] = keys
+			}
+			data = list
+		}
+	}
+
+	b, err := yaml.Marshal(data)
 	if err != nil {
 		return "", err
 	}

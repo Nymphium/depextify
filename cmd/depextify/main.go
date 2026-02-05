@@ -71,7 +71,7 @@ func main() {
 	}
 
 	if cfg.Format == "json" {
-		out, err := results.JSON()
+		out, err := results.JSON(scanConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
 			os.Exit(1)
@@ -81,7 +81,7 @@ func main() {
 	}
 
 	if cfg.Format == "yaml" {
-		out, err := results.YAML()
+		out, err := results.YAML(scanConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error formatting YAML: %v\n", err)
 			os.Exit(1)
