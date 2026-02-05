@@ -1,5 +1,10 @@
 package depextify
 
+import (
+	"maps"
+	"slices"
+)
+
 // Ignore shell built-in commands
 var builtins = func() map[string]bool {
 	keys := []string{
@@ -68,4 +73,19 @@ var common = map[string]bool{
 	"netstat": true, "ss": true, "traceroute": true, "dig": true, "host": true,
 	"nslookup": true, "hostname": true, "man": true, "info": true, "less": true,
 	"more": true, "nano": true, "vim": true, "vi": true, "emacs": true,
+}
+
+// GetBuiltins returns a sorted list of shell built-in commands.
+func GetBuiltins() []string {
+	return slices.Sorted(maps.Keys(builtins))
+}
+
+// GetCoreutils returns a sorted list of GNU Coreutils commands.
+func GetCoreutils() []string {
+	return slices.Sorted(maps.Keys(coreutils))
+}
+
+// GetCommon returns a sorted list of common shell commands.
+func GetCommon() []string {
+	return slices.Sorted(maps.Keys(common))
 }

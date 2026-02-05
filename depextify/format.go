@@ -7,22 +7,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"gopkg.in/yaml.v3"
 )
-
-// Occurrence represents a single occurrence of a command.
-type Occurrence struct {
-	Line     int
-	Col      int
-	Len      int
-	FullLine string
-}
-
-// ScanResult maps filename to its command occurrences: filename -> {cmd: []Occurrence}
-type ScanResult map[string]map[string][]Occurrence
 
 const (
 	colorReset  = "\033[0m"
@@ -31,16 +21,19 @@ const (
 	colorYellow = "\033[33m"
 	colorBold   = "\033[1m"
 	colorRed    = "\033[31m"
-)
 
-const (
 	DefaultLexer = "bash"
 	DefaultStyle = "monokai"
 )
 
+type highlightRange struct {
+	start int
+	end   int
+}
+
 var formatter = formatters.TTY256
 
-func emphasize(code, lexerName, styleName string) string {
+func highlightCode(code string, lexerName, styleName string, hl *highlightRange) string {
 	lexer := lexers.Get(lexerName)
 	if lexer == nil {
 		lexer = lexers.Get(DefaultLexer)
@@ -52,46 +45,72 @@ func emphasize(code, lexerName, styleName string) string {
 
 	iterator, err := lexer.Tokenise(nil, code)
 	if err != nil {
-		return code
+		return code // Fallback
 	}
+
 	var sb strings.Builder
-	err = formatter.Format(&sb, style, iterator)
-	if err != nil {
-		return code
+
+	// Helper to format a single token using chroma formatter
+	formatToken := func(t chroma.Token) {
+		_ = formatter.Format(&sb, style, chroma.Literator(t))
 	}
+
+	// Helper to format a highlighted string
+	formatHighlight := func(s string) {
+		sb.WriteString(colorBold + colorRed + s + colorReset)
+	}
+
+	currentPos := 0
+	for _, token := range iterator.Tokens() {
+		tLen := len(token.Value)
+		tEnd := currentPos + tLen
+
+		if hl == nil || tEnd <= hl.start || currentPos >= hl.end {
+			// No intersection or highlight is nil
+			formatToken(token)
+		} else {
+			// Intersection
+			// Overlap range
+			ovStart := max(currentPos, hl.start)
+			ovEnd := min(tEnd, hl.end)
+
+			// Part before highlight
+			if currentPos < ovStart {
+				before := token.Value[:ovStart-currentPos]
+				formatToken(chroma.Token{Type: token.Type, Value: before})
+			}
+
+			// Highlighted part
+			// We strip syntax highlighting for the command itself and enforce Bold Red.
+
+			mid := token.Value[ovStart-currentPos : ovEnd-currentPos]
+			formatHighlight(mid)
+
+			// Part after highlight
+			if tEnd > ovEnd {
+				after := token.Value[ovEnd-currentPos:]
+				formatToken(chroma.Token{Type: token.Type, Value: after})
+			}
+		}
+
+		currentPos += tLen
+	}
+
 	return strings.TrimSpace(sb.String())
 }
 
-// applyHighlight applies bold red to a specific range in a string that may contain ANSI codes.
-func applyHighlight(text string, start, end int) string {
-	var sb strings.Builder
-	pos := 0
-	inANSI := false
-
-	for i := 0; i < len(text); i++ {
-		if text[i] == '\x1b' {
-			inANSI = true
-			sb.WriteByte(text[i])
-			continue
-		}
-		if inANSI {
-			sb.WriteByte(text[i])
-			if text[i] == 'm' {
-				inANSI = false
-			}
-			continue
-		}
-
-		if pos == start {
-			sb.WriteString(colorBold + colorRed)
-		}
-		sb.WriteByte(text[i])
-		pos++
-		if pos == end {
-			sb.WriteString(colorReset)
-		}
+func max(a, b int) int {
+	if a > b {
+		return a
 	}
-	return sb.String()
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Format returns a formatted string representation of the result.
@@ -171,10 +190,20 @@ func (r ScanResult) Format(c *Config) string {
 					if c.UseColor {
 						start := occ.Col - 1
 						end := start + occ.Len
-						content = emphasize(content, c.LexerName, c.StyleName)
-						if start >= 0 && end <= len(occ.FullLine) {
-							content = applyHighlight(content, start, end)
+
+						lexerName := c.LexerName
+						if lexerName == DefaultLexer {
+							if l := lexers.Match(path); l != nil {
+								lexerName = l.Config().Name
+							}
 						}
+
+						hl := &highlightRange{start: start, end: end}
+						if start < 0 || end > len(occ.FullLine) {
+							hl = nil
+						}
+
+						content = highlightCode(content, lexerName, c.StyleName, hl)
 					} else {
 						content = strings.TrimSpace(content)
 					}
@@ -203,3 +232,4 @@ func (r ScanResult) YAML() (string, error) {
 	}
 	return string(b), nil
 }
+

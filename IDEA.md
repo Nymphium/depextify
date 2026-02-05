@@ -28,11 +28,11 @@
     - **Reason**: Warn about differences like `python3` vs `python2` or `grep` (BSD) vs `ggrep` (GNU).
 
 ## 5. Expanded Analysis Targets
-- [ ] **`Makefile` / `Justfile` / `Taskfile` Analysis**
+- [x] **`Makefile` / `Justfile` / `Taskfile` Analysis**
     - **Reason**: External commands are heavily used in build tools; covering them reveals project-wide dependencies.
-- [ ] **`Dockerfile` Analysis**
+- [x] **`Dockerfile` Analysis**
     - **Reason**: Extract commands used in `RUN` instructions.
-- [ ] **GitHub Actions (`.github/workflows/*.yml`) Analysis**
+- [x] **GitHub Actions (`.github/workflows/*.yml`) Analysis**
     - **Reason**: Extract commands used in `run:` steps.
 
 ## 6. UX Improvements

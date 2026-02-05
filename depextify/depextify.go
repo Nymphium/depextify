@@ -3,44 +3,49 @@ package depextify
 import (
 	"bufio"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	ignore "github.com/sabhiram/go-gitignore"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Config holds the configuration for scanning and formatting.
-type Config struct {
-	NoBuiltins   bool     `yaml:"no_builtins"`
-	NoCoreutils  bool     `yaml:"no_coreutils"`
-	NoCommon     bool     `yaml:"no_common"`
-	ShowHidden   bool     `yaml:"show_hidden"`
-	ExtraIgnores []string `yaml:"ignores"`
+type (
+	// Config holds the configuration for scanning and formatting.
+	Config struct {
+		NoBuiltins   bool     `yaml:"no_builtins"`
+		NoCoreutils  bool     `yaml:"no_coreutils"`
+		NoCommon     bool     `yaml:"no_common"`
+		ShowHidden   bool     `yaml:"show_hidden"`
+		ExtraIgnores []string `yaml:"ignores"`
 
-	ShowCount   bool   `yaml:"show_count"`
-	ShowPos     bool   `yaml:"show_pos"`
-	UseColor    bool   `yaml:"use_color"`
-	LexerName   string `yaml:"lexer"`
-	StyleName   string `yaml:"style"`
-	IsDirectory bool   `yaml:"-"`
-	Format      string `yaml:"format"`
+		ShowCount   bool   `yaml:"show_count"`
+		ShowPos     bool   `yaml:"show_pos"`
+		UseColor    bool   `yaml:"use_color"`
+		LexerName   string `yaml:"lexer"`
+		StyleName   string `yaml:"style"`
+		IsDirectory bool   `yaml:"-"`
+		Format      string `yaml:"format"`
 
-	Excludes []string `yaml:"excludes"`
-}
+		Excludes []string `yaml:"excludes"`
+	}
 
-type posInfo struct {
-	line uint
-	col  uint
-	len  uint
-}
+	// Occurrence represents a single occurrence of a command.
+	Occurrence struct {
+		Line     int
+		Col      int
+		Len      int
+		FullLine string
+	}
+
+	// ScanResult maps filename to its command occurrences: filename -> {cmd: []Occurrence}
+	ScanResult map[string]map[string][]Occurrence
+)
 
 var (
-	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`) 
+	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`)
 	reShebang  = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
 )
 
@@ -95,14 +100,11 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][
 
 // Do analyzes the given shell script file and returns a map of command names to their positions.
 func Do(f *os.File) (map[string][]posInfo, error) {
-	parser := syntax.NewParser()
-	file, err := parser.Parse(f, "")
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return nil, err
 	}
-
-	localFuncs := collectLocalFuncs(file)
-	return collectCommands(file, localFuncs), nil
+	return analyzeShellCode(string(content))
 }
 
 func isShellFile(path string) bool {
@@ -146,31 +148,32 @@ func (c *Config) calculateFileOccurrences(cmdPositions map[string][]posInfo, lin
 }
 
 func (c *Config) processFile(path string, skipCheck bool, ignores map[string]bool, res ScanResult) {
-	if !skipCheck && !isShellFile(path) {
-		return
-	}
 	path = filepath.Clean(path)
+
+	ext := GetExtractor(path)
+	if ext == nil {
+		if !skipCheck && !isShellFile(path) {
+			return
+		}
+		ext = &ShellExtractor{}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
 	defer func() { _ = f.Close() }()
 
-	cmdPositions, err := Do(f)
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return
+	}
+
+	cmdPositions, err := ext.Extract(content)
 	if err != nil || len(cmdPositions) == 0 {
 		return
 	}
 
-	if _, err := f.Seek(0, 0); err != nil {
-		return
-	}
-	content, err := io.ReadAll(f)
-	if err != nil {
-		content, err = os.ReadFile(path)
-		if err != nil {
-			return
-		}
-	}
 	lines := strings.Split(string(content), "\n")
 
 	fileOccs := c.calculateFileOccurrences(cmdPositions, lines, ignores)
@@ -197,13 +200,13 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 
 	// Setup exclude matcher
 	var matcher *ignore.GitIgnore
-	
+
 	// Load .depextifyignore if exists in the root of target or current directory
 	ignoreFile := ".depextifyignore"
 	if c.IsDirectory {
 		ignoreFile = filepath.Join(target, ".depextifyignore")
 	}
-	
+
 	// If explicit excludes are provided in config, start with them
 	// We compile them as if they were lines in a gitignore file
 	ignoreLines := c.Excludes
@@ -261,7 +264,7 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 		}
 
 		fullPath := filepath.Join(path, name)
-		
+
 		// Check exclusion (file/subdir)
 		if matcher != nil && matcher.MatchesPath(fullPath) {
 			continue
@@ -298,19 +301,4 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 		}
 	}
 	return nil
-}
-
-// GetBuiltins returns a sorted list of shell built-in commands.
-func GetBuiltins() []string {
-	return slices.Sorted(maps.Keys(builtins))
-}
-
-// GetCoreutils returns a sorted list of GNU Coreutils commands.
-func GetCoreutils() []string {
-	return slices.Sorted(maps.Keys(coreutils))
-}
-
-// GetCommon returns a sorted list of common shell commands.
-func GetCommon() []string {
-	return slices.Sorted(maps.Keys(common))
 }

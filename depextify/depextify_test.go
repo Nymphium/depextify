@@ -356,7 +356,43 @@ func TestScan(t *testing.T) {
 		require.NoError(t, err)
 		require.NotContains(t, res, unreadableFile)
 	})
-}
+
+	t.Run("extractors", func(t *testing.T) {
+		// Makefile
+		makefile := filepath.Join(tmpDir, "Makefile")
+		require.NoError(t, os.WriteFile(makefile, []byte("all:\n\techo hello\n"), 0600))
+
+		// Dockerfile
+		dockerfile := filepath.Join(tmpDir, "Dockerfile")
+		require.NoError(t, os.WriteFile(dockerfile, []byte("RUN apk add git\n"), 0600))
+
+		// GitHub Actions
+		workflowsDir := filepath.Join(tmpDir, ".github", "workflows")
+		require.NoError(t, os.MkdirAll(workflowsDir, 0755))
+		workflow := filepath.Join(workflowsDir, "ci.yml")
+		require.NoError(t, os.WriteFile(workflow, []byte("jobs:\n  build:\n    steps:\n      - run: go test\n"), 0600))
+
+		        // Need ShowHidden=true to scan .github directory
+		        config := &Config{ShowHidden: true}
+		        res, err := config.Scan(tmpDir)
+		        require.NoError(t, err)
+		
+		        // Debugging: Print keys if assertion fails
+		        keys := make([]string, 0, len(res))
+		        for k := range res {
+		            keys = append(keys, k)
+		        }
+		        t.Logf("Found files: %v", keys)
+		
+		        require.Contains(t, res, makefile)
+		        require.Contains(t, res[makefile], "echo")
+		
+		        require.Contains(t, res, dockerfile)
+		        require.Contains(t, res[dockerfile], "apk")
+		
+		        require.Contains(t, res, workflow)
+		        require.Contains(t, res[workflow], "go")
+		    })}
 
 func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
 	res := ScanResult{
