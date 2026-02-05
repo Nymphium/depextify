@@ -1,6 +1,20 @@
 # depextify
 
-`depextify` is a tool to collect and display command dependencies from shell scripts.
+`depextify` is a tool to collect and display command dependencies from shell scripts and other configuration files. It helps you identify what external binaries your project depends on.
+
+## Features
+
+- **Polyglot Analysis**: Extracts dependencies from:
+  - Shell scripts (`.sh`, `.bash`, `.zsh`, etc., or files with shebangs)
+  - `Makefile`
+  - `Dockerfile` (commands in `RUN` instructions)
+  - GitHub Actions Workflows (`.github/workflows/*.yml`)
+  - `Taskfile.yml`
+- **Smart Filtering**: Built-in lists for shell built-ins, GNU coreutils, and common tools to help you focus on actual external dependencies.
+- **Detailed Reporting**: Show occurrences, line numbers, and even the full line where each command is used.
+- **Syntax Highlighting**: Beautifully highlighted output using [chroma](https://github.com/alecthomas/chroma).
+- **Multiple Formats**: Export results as Text, JSON, or YAML.
+- **Configurable**: Project-specific settings via `.depextify.yaml` and `.depextifyignore`.
 
 ## Installation
 
@@ -42,6 +56,7 @@ no_builtins: true
 no_coreutils: true
 no_common: true
 show_count: true
+show_pos: true
 use_color: true
 lexer: bash
 style: monokai
@@ -55,7 +70,7 @@ excludes:
 
 ## Ignoring Files
 
-You can exclude files and directories from the scan by creating a `.depextifyignore` file in the target directory (or the current directory if scanning a single file). It uses the same syntax as `.gitignore`.
+You can exclude files and directories from the scan by creating a `.depextifyignore` file in the target directory. It uses the same syntax as `.gitignore`.
 
 ## Examples
 
@@ -65,17 +80,17 @@ You can exclude files and directories from the scan by creating a `.depextifyign
 $ depextify .
 examples/test.sh
   notify-send
-  tee
+  jq
 ```
 
 ### Show positions and counts
 
 ```sh
 $ depextify -pos -count examples/test.sh
+jq: 1
+  24:  echo "$RESPONSE" | jq '.status'
 notify-send: 1
-  15:  notify-send "Test"
-tee: 1
-  12:  echo "Hello" | tee /tmp/test.log
+  28:  notify-send "Task Finished" "Backup check complete"
 ```
 
 ### Include coreutils and common tools
@@ -84,10 +99,12 @@ tee: 1
 $ depextify -builtin -coreutils -common examples/test.sh
 curl
 date
+echo
 find
 jq
 mkdir
 notify-send
+rm
 tee
 touch
 wc
