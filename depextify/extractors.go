@@ -234,10 +234,15 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]posInfo, error) {
 
 func applyYAMLOffset(cmds map[string][]posInfo, val *yaml.Node, lines [][]byte, results map[string][]posInfo) {
 	shellLines := strings.Split(val.Value, "\n")
+	baseLine := val.Line
+	if val.Style == yaml.LiteralStyle || val.Style == yaml.FoldedStyle {
+		baseLine++
+	}
+
 	for cmd, infos := range cmds {
 		for _, info := range infos {
 			relLineIdx := int(info.line) - 1
-			absLineIdx := val.Line - 1 + relLineIdx
+			absLineIdx := baseLine - 1 + relLineIdx
 
 			if absLineIdx < len(lines) && relLineIdx < len(shellLines) {
 				origLine := string(lines[absLineIdx])
