@@ -17,8 +17,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.list != "" {
-		targets := strings.Split(cfg.list, ",")
+	if cfg.List != "" {
+		targets := strings.Split(cfg.List, ",")
 		all := false
 		for _, t := range targets {
 			if strings.TrimSpace(t) == "all" {
@@ -35,11 +35,11 @@ func main() {
 			t = strings.TrimSpace(t)
 			switch t {
 			case "builtins":
-				printCategory(os.Stdout, "builtins", depextify.GetBuiltins(), cfg.useColor)
+				printCategory(os.Stdout, "builtins", depextify.GetBuiltins(), cfg.UseColor)
 			case "coreutils":
-				printCategory(os.Stdout, "coreutils", depextify.GetCoreutils(), cfg.useColor)
+				printCategory(os.Stdout, "coreutils", depextify.GetCoreutils(), cfg.UseColor)
 			case "common":
-				printCategory(os.Stdout, "common", depextify.GetCommon(), cfg.useColor)
+				printCategory(os.Stdout, "common", depextify.GetCommon(), cfg.UseColor)
 			default:
 				fmt.Fprintf(os.Stderr, "Warning: unknown category %q\n", t)
 			}
@@ -47,28 +47,47 @@ func main() {
 		return
 	}
 
-	extraIgnores := []string{}
-	if cfg.ignores != "" {
-		extraIgnores = strings.Split(cfg.ignores, ",")
-	}
+	// Extra ignores are already merged into cfg.Ignores in parseFlags
 
 	scanConfig := &depextify.Config{
-		NoBuiltins:   cfg.ignoreBuiltins,
-		NoCoreutils:  cfg.ignoreCoreutils,
-		NoCommon:     cfg.ignoreCommon,
-		ShowHidden:   cfg.showHidden,
-		ExtraIgnores: extraIgnores,
-		ShowCount:    cfg.showCount,
-		ShowPos:      cfg.showPos,
-		UseColor:     cfg.useColor,
-		LexerName:    cfg.lexer,
-		StyleName:    cfg.style,
+		NoBuiltins:   cfg.IgnoreBuiltins,
+		NoCoreutils:  cfg.IgnoreCoreutils,
+		NoCommon:     cfg.IgnoreCommon,
+		ShowHidden:   cfg.ShowHidden,
+		ExtraIgnores: cfg.Ignores,
+		Excludes:     cfg.Excludes,
+		ShowCount:    cfg.ShowCount,
+		ShowPos:      cfg.ShowPos,
+		UseColor:     cfg.UseColor,
+		LexerName:    cfg.Lexer,
+		StyleName:    cfg.Style,
+		Format:       cfg.Format,
 	}
 
-	results, err := scanConfig.Scan(cfg.target)
+	results, err := scanConfig.Scan(cfg.Target)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if cfg.Format == "json" {
+		out, err := results.JSON()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(out)
+		return
+	}
+
+	if cfg.Format == "yaml" {
+		out, err := results.YAML()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error formatting YAML: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(out)
+		return
 	}
 
 	fmt.Print(results.Format(scanConfig))

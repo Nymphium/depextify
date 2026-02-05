@@ -52,7 +52,7 @@ func TestDo(t *testing.T) {
 }
 
 func TestResult_Format(t *testing.T) {
-	res := Result{
+	res := ScanResult{
 		"a.sh": {
 			"ls":  {{Line: 7, Col: 1, Len: 2, FullLine: "ls -a"}, {Line: 1024, Col: 3, Len: 2, FullLine: "  ls -l"}},
 			"cat": {{Line: 3, Col: 1, Len: 3, FullLine: "cat file"}},
@@ -61,38 +61,38 @@ func TestResult_Format(t *testing.T) {
 
 	t.Run("default on file", func(t *testing.T) {
 		expected := "cat\nls\n"
-		cfg := &Config{LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{LexerName: DefaultLexer, StyleName: DefaultStyle}
 		require.Equal(t, expected, res.Format(cfg))
 	})
 
 	t.Run("-count on file", func(t *testing.T) {
 		expected := "cat: 1\nls: 2\n"
-		cfg := &Config{ShowCount: true, LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{ShowCount: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		require.Equal(t, expected, res.Format(cfg))
 	})
 
 	t.Run("-pos on file", func(t *testing.T) {
 		// global max line is 1024 (width 4)
 		expected := "cat:\n     3:  cat file\nls:\n     7:  ls -a\n  1024:  ls -l\n"
-		cfg := &Config{ShowPos: true, LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{ShowPos: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		require.Equal(t, expected, res.Format(cfg))
 	})
 
 	t.Run("default on directory", func(t *testing.T) {
 		expected := "a.sh\n  cat\n  ls\n"
-		cfg := &Config{IsDirectory: true, LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		require.Equal(t, expected, res.Format(cfg))
 	})
 
 	t.Run("-pos on directory", func(t *testing.T) {
 		expected := "a.sh\n  cat:\n       3:  cat file\n  ls:\n       7:  ls -a\n    1024:  ls -l\n"
-		cfg := &Config{ShowPos: true, IsDirectory: true, LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{ShowPos: true, IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		require.Equal(t, expected, res.Format(cfg))
 	})
 
 	t.Run("color on file", func(t *testing.T) {
 		// Just check that it returns a non-empty string and contains ANSI codes
-		cfg := &Config{ShowPos: true, UseColor: true, LexerName: "bash", StyleName: "monokai"}
+		cfg := &Config{ShowPos: true, UseColor: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		formatted := res.Format(cfg)
 		require.Contains(t, formatted, "\033[")
 		require.Contains(t, formatted, "cat")
@@ -359,7 +359,7 @@ func TestScan(t *testing.T) {
 }
 
 func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
-	res := Result{
+	res := ScanResult{
 		"a.sh": {
 			"ls": {{Line: 1, Col: 1, Len: 2, FullLine: "ls"}},
 		},

@@ -29,6 +29,33 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
+- `-format <type>`: Specify output format (`text`, `json`, `yaml`). Default: `text`.
+
+## Configuration
+
+`depextify` can be configured using a `.depextify.yaml` file. It searches for this file in the current directory, and if not found, in your home directory.
+
+Example `.depextify.yaml`:
+
+```yaml
+no_builtins: true
+no_coreutils: true
+no_common: true
+show_count: true
+use_color: true
+lexer: bash
+style: monokai
+format: text
+ignores:
+  - my-custom-command
+excludes:
+  - vendor/
+  - node_modules/
+```
+
+## Ignoring Files
+
+You can exclude files and directories from the scan by creating a `.depextifyignore` file in the target directory (or the current directory if scanning a single file). It uses the same syntax as `.gitignore`.
 
 ## Examples
 

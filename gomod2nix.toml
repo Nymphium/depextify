@@ -13,6 +13,9 @@ schema = 3
   [mod."github.com/pmezard/go-difflib"]
     version = "v1.0.0"
     hash = "sha256-/FtmHnaGjdvEIKAJtrUfEhV7EVo5A/eYrtdnUkuxLDA="
+  [mod."github.com/sabhiram/go-gitignore"]
+    version = "v0.0.0-20210923224102-525f6e181f06"
+    hash = "sha256-A1aJFlcPRQvDqdJmEwpzhftR8C1Kzv1hXPszq8eO76Q="
   [mod."github.com/stretchr/testify"]
     version = "v1.11.1"
     hash = "sha256-sWfjkuKJyDllDEtnM8sb/pdLzPQmUYWYtmeWz/5suUc="

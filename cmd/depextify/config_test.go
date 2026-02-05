@@ -11,33 +11,33 @@ func TestParseFlags(t *testing.T) {
 	t.Run("default flags", func(t *testing.T) {
 		cfg, err := parseFlags([]string{"target.sh"})
 		require.NoError(t, err)
-		require.Equal(t, "target.sh", cfg.target)
-		require.True(t, cfg.ignoreBuiltins)
-		require.True(t, cfg.ignoreCoreutils)
-		require.True(t, cfg.ignoreCommon)
-		require.False(t, cfg.showCount)
-		require.False(t, cfg.showPos)
+		require.Equal(t, "target.sh", cfg.Target)
+		require.True(t, cfg.IgnoreBuiltins)
+		require.True(t, cfg.IgnoreCoreutils)
+		require.True(t, cfg.IgnoreCommon)
+		require.False(t, cfg.ShowCount)
+		require.False(t, cfg.ShowPos)
 	})
 
 	t.Run("override flags", func(t *testing.T) {
 		cfg, err := parseFlags([]string{"-count", "-pos", "-builtin", "-coreutils=false", "target.sh"})
 		require.NoError(t, err)
-		require.Equal(t, "target.sh", cfg.target)
-		require.False(t, cfg.ignoreBuiltins)
-		require.True(t, cfg.ignoreCoreutils) // -coreutils=false means ignore=true
-		require.True(t, cfg.ignoreCommon)
-		require.True(t, cfg.showCount)
-		require.True(t, cfg.showPos)
+		require.Equal(t, "target.sh", cfg.Target)
+		require.False(t, cfg.IgnoreBuiltins)
+		require.True(t, cfg.IgnoreCoreutils) // -coreutils=false means ignore=true
+		require.True(t, cfg.IgnoreCommon)
+		require.True(t, cfg.ShowCount)
+		require.True(t, cfg.ShowPos)
 	})
 
 	t.Run("last-one-wins", func(t *testing.T) {
 		cfg, err := parseFlags([]string{"-common", "-no-common", "target.sh"})
 		require.NoError(t, err)
-		require.True(t, cfg.ignoreCommon)
+		require.True(t, cfg.IgnoreCommon)
 
 		cfg, err = parseFlags([]string{"-no-common", "-common", "target.sh"})
 		require.NoError(t, err)
-		require.False(t, cfg.ignoreCommon)
+		require.False(t, cfg.IgnoreCommon)
 	})
 
 	t.Run("list flag conflicts", func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestParseFlags(t *testing.T) {
 
 func TestPrintCategory(t *testing.T) {
 	commands := []string{"cmd1", "cmd2", "cmd3", "cmd4", "cmd5", "cmd6"}
-	
+
 	t.Run("no color", func(t *testing.T) {
 		var buf bytes.Buffer
 		printCategory(&buf, "Test", commands, false)
