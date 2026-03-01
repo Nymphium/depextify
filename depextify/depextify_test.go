@@ -12,12 +12,12 @@ func TestDo(t *testing.T) {
 	tests := []struct {
 		name     string
 		content  string
-		expected map[string][]posInfo
+		expected map[string][]PosInfo
 	}{
 		{
 			name:    "simple case",
 			content: "echo \"hello\"\nls -l\ncat file.txt\n",
-			expected: map[string][]posInfo{
+			expected: map[string][]PosInfo{
 				"echo": {{line: 1, col: 1, len: 4}},
 				"ls":   {{line: 2, col: 1, len: 2}},
 				"cat":  {{line: 3, col: 1, len: 3}},
@@ -26,7 +26,7 @@ func TestDo(t *testing.T) {
 		{
 			name:    "multiple occurrences",
 			content: "curl example.com\ncurl google.com\n",
-			expected: map[string][]posInfo{
+			expected: map[string][]PosInfo{
 				"curl": {{line: 1, col: 1, len: 4}, {line: 2, col: 1, len: 4}},
 			},
 		},
@@ -103,7 +103,7 @@ func TestResult_Format(t *testing.T) {
 func TestResult_JSON(t *testing.T) {
 	res := ScanResult{
 		"a.sh": {
-			"ls": {{Line: 1, Col: 1, Len: 2, FullLine: "ls"}},
+			"ls":  {{Line: 1, Col: 1, Len: 2, FullLine: "ls"}},
 			"cat": {{Line: 2, Col: 1, Len: 3, FullLine: "cat"}},
 		},
 	}
@@ -313,7 +313,7 @@ func TestScan(t *testing.T) {
 
 		// Check if real file is found
 		require.Contains(t, res, realFile)
-		
+
 		// Check if symlinked file is found (it should be processed as a file)
 		require.Contains(t, res, linkFile)
 
@@ -325,26 +325,26 @@ func TestScan(t *testing.T) {
 		// Broken link should be ignored (not in results)
 		require.NotContains(t, res, brokenLink)
 	})
-	
+
 	t.Run("syntax error", func(t *testing.T) {
 		// Create a file with invalid shell syntax
 		// mvdan/sh is forgiving, but we can try something that fails parsing
 		// Unclosed quote?
 		badFile := filepath.Join(tmpDir, "bad.sh")
 		require.NoError(t, os.WriteFile(badFile, []byte("echo \"unclosed"), 0600))
-		
+
 		config := &Config{}
 		res, err := config.Scan(badFile)
 		// Scan shouldn't fail, but it might skip the file or return partial results
 		require.NoError(t, err)
-		
+
 		// If parser fails, it returns error in Do, and processFile returns early.
 		// So result should not contain badFile (or empty result)
 		// But wait, Do returns error?
 		// check Do implementation:
 		// file, err := parser.Parse(f, "")
 		// if err != nil { return nil, err }
-		
+
 		// So Do returns error. processFile sees error and returns.
 		// So badFile should NOT be in res.
 		require.NotContains(t, res, badFile)
@@ -373,7 +373,7 @@ func TestScan(t *testing.T) {
 		// Symlink from rootDir/link_to_unreadable -> ../unreadable_target_2
 		// Or absolute path
 		require.NoError(t, os.Symlink(unreadableDir, linkDir))
-		
+
 		config := &Config{}
 		_, err := config.Scan(rootDir)
 		require.Error(t, err)
@@ -407,27 +407,28 @@ func TestScan(t *testing.T) {
 		workflow := filepath.Join(workflowsDir, "ci.yml")
 		require.NoError(t, os.WriteFile(workflow, []byte("jobs:\n  build:\n    steps:\n      - run: go test\n"), 0600))
 
-		        // Need ShowHidden=true to scan .github directory
-		        config := &Config{ShowHidden: true}
-		        res, err := config.Scan(tmpDir)
-		        require.NoError(t, err)
-		
-		        // Debugging: Print keys if assertion fails
-		        keys := make([]string, 0, len(res))
-		        for k := range res {
-		            keys = append(keys, k)
-		        }
-		        t.Logf("Found files: %v", keys)
-		
-		        require.Contains(t, res, makefile)
-		        require.Contains(t, res[makefile], "echo")
-		
-		        require.Contains(t, res, dockerfile)
-		        require.Contains(t, res[dockerfile], "apk")
-		
-		        require.Contains(t, res, workflow)
-		        require.Contains(t, res[workflow], "go")
-		    })}
+		// Need ShowHidden=true to scan .github directory
+		config := &Config{ShowHidden: true}
+		res, err := config.Scan(tmpDir)
+		require.NoError(t, err)
+
+		// Debugging: Print keys if assertion fails
+		keys := make([]string, 0, len(res))
+		for k := range res {
+			keys = append(keys, k)
+		}
+		t.Logf("Found files: %v", keys)
+
+		require.Contains(t, res, makefile)
+		require.Contains(t, res[makefile], "echo")
+
+		require.Contains(t, res, dockerfile)
+		require.Contains(t, res[dockerfile], "apk")
+
+		require.Contains(t, res, workflow)
+		require.Contains(t, res[workflow], "go")
+	})
+}
 
 func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
 	res := ScanResult{
@@ -441,5 +442,3 @@ func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
 	require.Contains(t, formatted, "\033[")
 	require.Contains(t, formatted, "ls")
 }
-
-

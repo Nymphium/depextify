@@ -1,3 +1,4 @@
+// Package depextify provides the core logic for parsing and extracting commands from shell scripts and configuration files.
 package depextify
 
 import (
@@ -72,18 +73,17 @@ func collectLocalFuncs(file *syntax.File) map[string]bool {
 // collectCommands() collects command names from CallExpr nodes with filtering:
 // - not local functions
 // - not starting with '-'
-func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][]posInfo {
-	commands := make(map[string][]posInfo)
+func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][]PosInfo {
+	commands := make(map[string][]PosInfo)
 
 	syntax.Walk(file, func(node syntax.Node) bool {
-		switch x := node.(type) {
-		case *syntax.CallExpr:
+		if x, ok := node.(*syntax.CallExpr); ok {
 			if len(x.Args) > 0 && len(x.Args[0].Parts) == 1 {
 				if part, ok := x.Args[0].Parts[0].(*syntax.Lit); ok {
 					cmd := part.Value
 
 					if !localFuncs[cmd] && !strings.HasPrefix(cmd, "-") {
-						commands[cmd] = append(commands[cmd], posInfo{
+						commands[cmd] = append(commands[cmd], PosInfo{
 							line: x.Pos().Line(),
 							col:  x.Pos().Col(),
 							len:  uint(len(cmd)),
@@ -99,7 +99,7 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][
 }
 
 // Do analyzes the given shell script file and returns a map of command names to their positions.
-func Do(f *os.File) (map[string][]posInfo, error) {
+func Do(f *os.File) (map[string][]PosInfo, error) {
 	content, err := io.ReadAll(f)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func isShellFile(path string) bool {
 	return reShebang.MatchString(string(line))
 }
 
-func (c *Config) calculateFileOccurrences(cmdPositions map[string][]posInfo, lines []string, ignores map[string]bool) map[string][]Occurrence {
+func (c *Config) calculateFileOccurrences(cmdPositions map[string][]PosInfo, lines []string, ignores map[string]bool) map[string][]Occurrence {
 	fileOccs := make(map[string][]Occurrence)
 	for cmd, ps := range cmdPositions {
 		if (c.NoBuiltins && builtins[cmd]) || (c.NoCoreutils && coreutils[cmd]) || (c.NoCommon && common[cmd]) || ignores[cmd] {

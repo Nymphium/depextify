@@ -22,7 +22,9 @@ const (
 	colorBold   = "\033[1m"
 	colorRed    = "\033[31m"
 
+	// DefaultLexer is the default lexer to use for syntax highlighting.
 	DefaultLexer = "bash"
+	// DefaultStyle is the default style to use for syntax highlighting.
 	DefaultStyle = "monokai"
 )
 
@@ -97,20 +99,6 @@ func highlightCode(code string, lexerName, styleName string, hl *highlightRange)
 	}
 
 	return strings.TrimSpace(sb.String())
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // Format returns a formatted string representation of the result.
@@ -284,4 +272,3 @@ func (r ScanResult) YAML(c *Config) (string, error) {
 	}
 	return string(b), nil
 }
-

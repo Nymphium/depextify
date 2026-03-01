@@ -1,3 +1,4 @@
+// Package main is the entry point for the depextify CLI tool.
 package main
 
 import (

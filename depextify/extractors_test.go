@@ -19,7 +19,7 @@ build:
 	extractor := &MakefileExtractor{}
 	res, err := extractor.Extract([]byte(content))
 	require.NoError(t, err)
-	
+
 	require.Contains(t, res, "echo")
 	require.Contains(t, res, "ls")
 	require.Contains(t, res, "go")
@@ -92,21 +92,22 @@ steps:
 		// Line 2:   - run: |
 		// Line 3:       # This is a comment
 		// Line 4:       echo "first"
-		// Line 5:       
+		// Line 5:
 		// Line 6:       ls -l
-		
+
 		res, err := extractor.Extract([]byte(content))
 		require.NoError(t, err)
-		
-				require.Contains(t, res, "echo")
-				echoInfos := res["echo"]
-				require.NotEmpty(t, echoInfos)
-				require.Equal(t, uint(5), echoInfos[0].line)
-				
-				require.Contains(t, res, "ls")
-				lsInfos := res["ls"]
-				require.NotEmpty(t, lsInfos)
-				require.Equal(t, uint(7), lsInfos[0].line)	})
+
+		require.Contains(t, res, "echo")
+		echoInfos := res["echo"]
+		require.NotEmpty(t, echoInfos)
+		require.Equal(t, uint(5), echoInfos[0].line)
+
+		require.Contains(t, res, "ls")
+		lsInfos := res["ls"]
+		require.NotEmpty(t, lsInfos)
+		require.Equal(t, uint(7), lsInfos[0].line)
+	})
 }
 
 func TestGetExtractor(t *testing.T) {

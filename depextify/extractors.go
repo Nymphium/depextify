@@ -12,7 +12,8 @@ import (
 )
 
 type (
-	posInfo struct {
+	// PosInfo represents the position of a command in a file.
+	PosInfo struct {
 		line uint
 		col  uint
 		len  uint
@@ -20,7 +21,7 @@ type (
 
 	// Extractor interface defines the contract for command extractors.
 	Extractor interface {
-		Extract(content []byte) (map[string][]posInfo, error)
+		Extract(content []byte) (map[string][]PosInfo, error)
 	}
 	// ShellExtractor extracts commands from shell scripts.
 	ShellExtractor struct{}
@@ -43,7 +44,7 @@ var (
 
 // analyzeShellCode parses the given shell code and returns command occurrences.
 // Positions are relative to the start of the code string.
-func analyzeShellCode(code string) (map[string][]posInfo, error) {
+func analyzeShellCode(code string) (map[string][]PosInfo, error) {
 	parser := syntax.NewParser()
 	file, err := parser.Parse(strings.NewReader(code), "")
 	if err != nil {
@@ -54,12 +55,14 @@ func analyzeShellCode(code string) (map[string][]posInfo, error) {
 	return collectCommands(file, localFuncs), nil
 }
 
-func (e *ShellExtractor) Extract(content []byte) (map[string][]posInfo, error) {
+// Extract extracts commands from shell code.
+func (e *ShellExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	return analyzeShellCode(string(content))
 }
 
-func (e *MakefileExtractor) Extract(content []byte) (map[string][]posInfo, error) {
-	results := make(map[string][]posInfo)
+// Extract extracts commands from Makefile content.
+func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
+	results := make(map[string][]PosInfo)
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 
 	lineNum := 0
@@ -74,13 +77,15 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]posInfo, error
 				runes[0] = ' ' // Replace tab with space
 
 				// Replace prefixes
+			loop:
 				for i := 1; i < len(runes); i++ {
-					if runes[i] == '@' || runes[i] == '-' || runes[i] == '+' {
+					switch runes[i] {
+					case '@', '-', '+':
 						runes[i] = ' '
-					} else if runes[i] == ' ' || runes[i] == '\t' {
+					case ' ', '\t':
 						continue
-					} else {
-						break
+					default:
+						break loop
 					}
 				}
 
@@ -100,8 +105,9 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]posInfo, error
 	return results, nil
 }
 
-func (e *DockerfileExtractor) Extract(content []byte) (map[string][]posInfo, error) {
-	results := make(map[string][]posInfo)
+// Extract extracts commands from Dockerfile content.
+func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
+	results := make(map[string][]PosInfo)
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 
 	lineNum := 0
@@ -175,14 +181,15 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]posInfo, err
 	return results, nil
 }
 
-func (e *YAMLExtractor) Extract(content []byte) (map[string][]posInfo, error) {
+// Extract extracts commands from YAML content.
+func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	var node yaml.Node
 	if err := yaml.NewDecoder(bytes.NewReader(content)).Decode(&node); err != nil {
 		return nil, err
 	}
 
 	lines := bytes.Split(content, []byte("\n"))
-	results := make(map[string][]posInfo)
+	results := make(map[string][]PosInfo)
 
 	var walk func(*yaml.Node)
 	walk = func(n *yaml.Node) {
@@ -232,7 +239,7 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]posInfo, error) {
 	return results, nil
 }
 
-func applyYAMLOffset(cmds map[string][]posInfo, val *yaml.Node, lines [][]byte, results map[string][]posInfo) {
+func applyYAMLOffset(cmds map[string][]PosInfo, val *yaml.Node, lines [][]byte, results map[string][]PosInfo) {
 	shellLines := strings.Split(val.Value, "\n")
 	baseLine := val.Line
 	if val.Style == yaml.LiteralStyle || val.Style == yaml.FoldedStyle {
@@ -283,4 +290,3 @@ func GetExtractor(path string) Extractor {
 
 	return nil
 }
-
