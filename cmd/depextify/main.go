@@ -50,16 +50,7 @@ func main() {
 
 	// Extra ignores are already merged into cfg.Ignores in parseFlags
 
-	scanConfig := &depextify.Config{
-		NoBuiltins:     cfg.IgnoreBuiltins,
-		NoCoreutils:    cfg.IgnoreCoreutils,
-		NoCommon:       cfg.IgnoreCommon,
-		ShowHidden:     cfg.ShowHidden,
-		GitignoreAware: cfg.GitignoreAware,
-		Aggregate:      cfg.Aggregate,
-		ExtraIgnores:   cfg.Ignores,
-		Excludes:       cfg.Excludes,
-	}
+	scanConfig := cfg.ToConfig()
 
 	results, err := scanConfig.Scan(cfg.Target)
 	if err != nil {
@@ -68,20 +59,12 @@ func main() {
 	}
 
 	// We need to determine if target was a directory to pass to format config.
-	// Since Scan doesn't return IsDirectory anymore, we check it here.
 	isDir := false
 	if info, err := os.Stat(cfg.Target); err == nil {
 		isDir = info.IsDir()
 	}
 
-	formatConfig := &depextify.FormatConfig{
-		ShowCount:   cfg.ShowCount,
-		ShowPos:     cfg.ShowPos,
-		UseColor:    cfg.UseColor,
-		LexerName:   cfg.Lexer,
-		StyleName:   cfg.Style,
-		IsDirectory: isDir,
-	}
+	formatConfig := cfg.ToFormatConfig(isDir)
 
 	var formatter depextify.Formatter
 	switch cfg.Format {

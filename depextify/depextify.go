@@ -46,9 +46,6 @@ var (
 )
 
 func toInt(u uint) int {
-	if u > uint(^uint(0)>>1) {
-		return 0
-	}
 	return int(u)
 }
 
@@ -93,9 +90,9 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][
 	return commands
 }
 
-// Do analyzes the given shell script file and returns a map of command names to their positions.
-func Do(f *os.File) (map[string][]PosInfo, error) {
-	content, err := io.ReadAll(f)
+// Do analyzes the given shell script reader and returns a map of command names to their positions.
+func Do(r io.Reader) (map[string][]PosInfo, error) {
+	content, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
@@ -153,13 +150,7 @@ func (c *Config) processFile(path string, skipCheck bool, ignores map[string]boo
 		ext = &ShellExtractor{}
 	}
 
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	content, err := io.ReadAll(f)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}

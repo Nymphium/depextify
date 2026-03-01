@@ -224,6 +224,34 @@ func (f *TextFormatter) Format(r ScanResult) (string, error) {
 	return sb.String(), nil
 }
 
+func transformResult(r ScanResult, c *FormatConfig) interface{} {
+	if c.ShowPos {
+		return r
+	}
+
+	if c.ShowCount {
+		summary := make(map[string]map[string]int)
+		for file, cmds := range r {
+			summary[file] = make(map[string]int)
+			for cmd, occs := range cmds {
+				summary[file][cmd] = len(occs)
+			}
+		}
+		return summary
+	}
+
+	list := make(map[string][]string)
+	for file, cmds := range r {
+		keys := make([]string, 0, len(cmds))
+		for cmd := range cmds {
+			keys = append(keys, cmd)
+		}
+		slices.Sort(keys)
+		list[file] = keys
+	}
+	return list
+}
+
 // JSONFormatter formats the result as JSON.
 type JSONFormatter struct {
 	Config *FormatConfig
@@ -231,33 +259,7 @@ type JSONFormatter struct {
 
 // Format returns the JSON encoding of the result.
 func (f *JSONFormatter) Format(r ScanResult) (string, error) {
-	c := f.Config
-	var data interface{} = r
-
-	if !c.ShowPos {
-		if c.ShowCount {
-			summary := make(map[string]map[string]int)
-			for file, cmds := range r {
-				summary[file] = make(map[string]int)
-				for cmd, occs := range cmds {
-					summary[file][cmd] = len(occs)
-				}
-			}
-			data = summary
-		} else {
-			list := make(map[string][]string)
-			for file, cmds := range r {
-				keys := make([]string, 0, len(cmds))
-				for cmd := range cmds {
-					keys = append(keys, cmd)
-				}
-				slices.Sort(keys)
-				list[file] = keys
-			}
-			data = list
-		}
-	}
-
+	data := transformResult(r, f.Config)
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", err
@@ -272,33 +274,7 @@ type YAMLFormatter struct {
 
 // Format returns the YAML encoding of the result.
 func (f *YAMLFormatter) Format(r ScanResult) (string, error) {
-	c := f.Config
-	var data interface{} = r
-
-	if !c.ShowPos {
-		if c.ShowCount {
-			summary := make(map[string]map[string]int)
-			for file, cmds := range r {
-				summary[file] = make(map[string]int)
-				for cmd, occs := range cmds {
-					summary[file][cmd] = len(occs)
-				}
-			}
-			data = summary
-		} else {
-			list := make(map[string][]string)
-			for file, cmds := range r {
-				keys := make([]string, 0, len(cmds))
-				for cmd := range cmds {
-					keys = append(keys, cmd)
-				}
-				slices.Sort(keys)
-				list[file] = keys
-			}
-			data = list
-		}
-	}
-
+	data := transformResult(r, f.Config)
 	b, err := yaml.Marshal(data)
 	if err != nil {
 		return "", err

@@ -55,6 +55,16 @@ func analyzeShellCode(code string) (map[string][]PosInfo, error) {
 	return collectCommands(file, localFuncs), nil
 }
 
+func mergeResults(dest, src map[string][]PosInfo, lineOffset uint, colOffset uint) {
+	for cmd, infos := range src {
+		for _, info := range infos {
+			info.line += lineOffset
+			info.col += colOffset
+			dest[cmd] = append(dest[cmd], info)
+		}
+	}
+}
+
 // Extract extracts commands from shell code.
 func (e *ShellExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	return analyzeShellCode(string(content))
@@ -92,12 +102,7 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error
 				script := string(runes)
 				cmds, err := analyzeShellCode(script)
 				if err == nil {
-					for cmd, infos := range cmds {
-						for _, info := range infos {
-							info.line += uint(lineNum - 1)
-							results[cmd] = append(results[cmd], info)
-						}
-					}
+					mergeResults(results, cmds, uint(lineNum-1), 0)
 				}
 			}
 		}
@@ -130,12 +135,7 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, err
 
 				cmds, err := analyzeShellCode(script)
 				if err == nil {
-					for cmd, infos := range cmds {
-						for _, info := range infos {
-							info.line += uint(startLine - 1)
-							results[cmd] = append(results[cmd], info)
-						}
-					}
+					mergeResults(results, cmds, uint(startLine-1), 0)
 				}
 
 				inRun = false
@@ -166,12 +166,7 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, err
 					inRun = false
 					cmds, err := analyzeShellCode(buffer.String())
 					if err == nil {
-						for cmd, infos := range cmds {
-							for _, info := range infos {
-								info.line += uint(startLine - 1)
-								results[cmd] = append(results[cmd], info)
-							}
-						}
+						mergeResults(results, cmds, uint(startLine-1), 0)
 					}
 					buffer.Reset()
 				}

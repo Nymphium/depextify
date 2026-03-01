@@ -3,6 +3,7 @@ package depextify
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,6 +50,18 @@ func TestDo(t *testing.T) {
 			require.Equal(t, tt.expected, actual)
 		})
 	}
+}
+
+func TestDo_Reader(t *testing.T) {
+	content := "ls\necho hello"
+	expected := map[string][]PosInfo{
+		"ls":   {{line: 1, col: 1, len: 2}},
+		"echo": {{line: 2, col: 1, len: 4}},
+	}
+
+	actual, err := Do(strings.NewReader(content))
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
 }
 
 func TestResult_Format(t *testing.T) {
