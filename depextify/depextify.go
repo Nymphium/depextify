@@ -22,6 +22,9 @@ type (
 		ShowHidden   bool     `yaml:"show_hidden"`
 		ExtraIgnores []string `yaml:"ignores"`
 
+		GitignoreAware bool `yaml:"gitignore_aware"`
+		Aggregate      bool `yaml:"aggregate"`
+
 		ShowCount   bool   `yaml:"show_count"`
 		ShowPos     bool   `yaml:"show_pos"`
 		UseColor    bool   `yaml:"use_color"`
@@ -202,23 +205,30 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 	var matcher *ignore.GitIgnore
 
 	// Load .depextifyignore if exists in the root of target or current directory
-	ignoreFile := ".depextifyignore"
-	if c.IsDirectory {
-		ignoreFile = filepath.Join(target, ".depextifyignore")
+	ignoreFiles := []string{".depextifyignore"}
+	if c.GitignoreAware {
+		ignoreFiles = append(ignoreFiles, ".gitignore")
 	}
 
 	// If explicit excludes are provided in config, start with them
 	// We compile them as if they were lines in a gitignore file
 	ignoreLines := c.Excludes
 
-	if content, err := os.ReadFile(ignoreFile); err == nil {
-		lines := strings.Split(string(content), "\n")
-		ignoreLines = append(ignoreLines, lines...)
-	} else if !c.IsDirectory {
-		// Try looking in current directory if target is a file
-		if content, err := os.ReadFile(".depextifyignore"); err == nil {
+	for _, name := range ignoreFiles {
+		path := name
+		if c.IsDirectory {
+			path = filepath.Join(target, name)
+		}
+
+		if content, err := os.ReadFile(path); err == nil {
 			lines := strings.Split(string(content), "\n")
 			ignoreLines = append(ignoreLines, lines...)
+		} else if !c.IsDirectory {
+			// Try looking in current directory if target is a file
+			if content, err := os.ReadFile(name); err == nil {
+				lines := strings.Split(string(content), "\n")
+				ignoreLines = append(ignoreLines, lines...)
+			}
 		}
 	}
 
@@ -237,7 +247,21 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 
 	visited := make(map[string]bool)
 	err = c.walkRecursive(target, ignores, res, visited, matcher)
-	return res, err
+	if err != nil {
+		return nil, err
+	}
+
+	if c.Aggregate {
+		aggregated := make(map[string][]Occurrence)
+		for _, fileOccs := range res {
+			for cmd, occs := range fileOccs {
+				aggregated[cmd] = append(aggregated[cmd], occs...)
+			}
+		}
+		res = ScanResult{target: aggregated}
+	}
+
+	return res, nil
 }
 
 func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore) error {

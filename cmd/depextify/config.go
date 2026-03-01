@@ -21,6 +21,8 @@ type CLIConfig struct {
 	IgnoreCoreutils bool     `yaml:"no_coreutils"`
 	IgnoreCommon    bool     `yaml:"no_common"`
 	UseColor        bool     `yaml:"use_color"`
+	GitignoreAware  bool     `yaml:"gitignore_aware"`
+	Aggregate       bool     `yaml:"aggregate"`
 	List            string   `yaml:"-"`
 	Lexer           string   `yaml:"lexer"`
 	Style           string   `yaml:"style"`
@@ -65,6 +67,7 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		IgnoreCoreutils: true,
 		IgnoreCommon:    true,
 		UseColor:        isTTY(),
+		GitignoreAware:  true,
 		Lexer:           depextify.DefaultLexer,
 		Style:           depextify.DefaultStyle,
 		Format:          "text",
@@ -77,6 +80,7 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	fs.BoolVar(&cfg.ShowCount, "count", cfg.ShowCount, "show appearance count for each command")
 	fs.BoolVar(&cfg.ShowPos, "pos", cfg.ShowPos, "show file position and full line for each command")
 	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories")
+	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
 
 	// Pointers for [no-] flags. Descriptions are placed in one of the pair.
 	pBuilt := fs.Bool("builtin", false, "")
@@ -87,6 +91,8 @@ func parseFlags(args []string) (*CLIConfig, error) {
 	pNoCommon := fs.Bool("no-common", true, "ignore/include common commands (grep, find, etc.) (default: true (ignore))")
 	pColor := fs.Bool("color", true, "")
 	pNoColor := fs.Bool("no-color", false, "enable/disable colored output (default: auto)")
+	pGit := fs.Bool("gitignore-aware", true, "")
+	pNoGit := fs.Bool("no-gitignore-aware", false, "enable/disable gitignore awareness (default: true (enabled))")
 
 	fs.StringVar(&cfg.List, "list", "", "comma-separated list of categories to list (builtins, coreutils, common) or \"all\"")
 	fs.StringVar(&cfg.Lexer, "lexer", cfg.Lexer, "chroma lexer name")
@@ -100,10 +106,12 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		fmt.Fprintf(os.Stderr, "  -count\n    \t%s\n", u("count"))
 		fmt.Fprintf(os.Stderr, "  -pos\n    \t%s\n", u("pos"))
 		fmt.Fprintf(os.Stderr, "  -hidden\n    \t%s\n", u("hidden"))
+		fmt.Fprintf(os.Stderr, "  -aggregate\n    \t%s\n", u("aggregate"))
 		fmt.Fprintf(os.Stderr, "  -[no-]builtin\n    \t%s\n", u("no-builtin"))
 		fmt.Fprintf(os.Stderr, "  -[no-]coreutils\n    \t%s\n", u("no-coreutils"))
 		fmt.Fprintf(os.Stderr, "  -[no-]common\n    \t%s\n", u("no-common"))
 		fmt.Fprintf(os.Stderr, "  -[no-]color\n    \t%s\n", u("no-color"))
+		fmt.Fprintf(os.Stderr, "  -[no-]gitignore-aware\n    \t%s\n", u("no-gitignore-aware"))
 		fmt.Fprintf(os.Stderr, "  -ignores string\n    \t%s\n", u("ignores"))
 		fmt.Fprintf(os.Stderr, "  -list string\n    \t%s\n", u("list"))
 		fmt.Fprintf(os.Stderr, "  -lexer string\n    \t%s (default: %q)\n", u("lexer"), depextify.DefaultLexer)
@@ -148,6 +156,10 @@ func parseFlags(args []string) (*CLIConfig, error) {
 			cfg.UseColor = *pColor
 		case "no-color":
 			cfg.UseColor = !*pNoColor
+		case "gitignore-aware":
+			cfg.GitignoreAware = *pGit
+		case "no-gitignore-aware":
+			cfg.GitignoreAware = !*pNoGit
 		}
 	}
 

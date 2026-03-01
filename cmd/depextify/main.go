@@ -55,6 +55,8 @@ func main() {
 		NoCoreutils:  cfg.IgnoreCoreutils,
 		NoCommon:     cfg.IgnoreCommon,
 		ShowHidden:   cfg.ShowHidden,
+		GitignoreAware: cfg.GitignoreAware,
+		Aggregate:    cfg.Aggregate,
 		ExtraIgnores: cfg.Ignores,
 		Excludes:     cfg.Excludes,
 		ShowCount:    cfg.ShowCount,
