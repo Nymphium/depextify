@@ -61,39 +61,50 @@ func TestResult_Format(t *testing.T) {
 
 	t.Run("default on file", func(t *testing.T) {
 		expected := "cat\nls\n"
-		cfg := &Config{LexerName: DefaultLexer, StyleName: DefaultStyle}
-		require.Equal(t, expected, res.Format(cfg))
+		cfg := &FormatConfig{LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		out, _ := formatter.Format(res)
+		require.Equal(t, expected, out)
 	})
 
 	t.Run("-count on file", func(t *testing.T) {
 		expected := "cat: 1\nls: 2\n"
-		cfg := &Config{ShowCount: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		require.Equal(t, expected, res.Format(cfg))
+		cfg := &FormatConfig{ShowCount: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		out, _ := formatter.Format(res)
+		require.Equal(t, expected, out)
 	})
 
 	t.Run("-pos on file", func(t *testing.T) {
 		// global max line is 1024 (width 4)
 		expected := "cat:\n     3:  cat file\nls:\n     7:  ls -a\n  1024:  ls -l\n"
-		cfg := &Config{ShowPos: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		require.Equal(t, expected, res.Format(cfg))
+		cfg := &FormatConfig{ShowPos: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		out, _ := formatter.Format(res)
+		require.Equal(t, expected, out)
 	})
 
 	t.Run("default on directory", func(t *testing.T) {
 		expected := "a.sh\n  cat\n  ls\n"
-		cfg := &Config{IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		require.Equal(t, expected, res.Format(cfg))
+		cfg := &FormatConfig{IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		out, _ := formatter.Format(res)
+		require.Equal(t, expected, out)
 	})
 
 	t.Run("-pos on directory", func(t *testing.T) {
 		expected := "a.sh\n  cat:\n       3:  cat file\n  ls:\n       7:  ls -a\n    1024:  ls -l\n"
-		cfg := &Config{ShowPos: true, IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		require.Equal(t, expected, res.Format(cfg))
+		cfg := &FormatConfig{ShowPos: true, IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		out, _ := formatter.Format(res)
+		require.Equal(t, expected, out)
 	})
 
 	t.Run("color on file", func(t *testing.T) {
 		// Just check that it returns a non-empty string and contains ANSI codes
-		cfg := &Config{ShowPos: true, UseColor: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		formatted := res.Format(cfg)
+		cfg := &FormatConfig{ShowPos: true, UseColor: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
+		formatter := &TextFormatter{Config: cfg}
+		formatted, _ := formatter.Format(res)
 		require.Contains(t, formatted, "\033[")
 		require.Contains(t, formatted, "cat")
 		require.Contains(t, formatted, "ls")
@@ -109,8 +120,9 @@ func TestResult_JSON(t *testing.T) {
 	}
 
 	t.Run("default (list)", func(t *testing.T) {
-		cfg := &Config{}
-		jsonStr, err := res.JSON(cfg)
+		cfg := &FormatConfig{}
+		formatter := &JSONFormatter{Config: cfg}
+		jsonStr, err := formatter.Format(res)
 		require.NoError(t, err)
 		require.Contains(t, jsonStr, `"ls"`)
 		require.Contains(t, jsonStr, `"cat"`)
@@ -118,8 +130,9 @@ func TestResult_JSON(t *testing.T) {
 	})
 
 	t.Run("-count", func(t *testing.T) {
-		cfg := &Config{ShowCount: true}
-		jsonStr, err := res.JSON(cfg)
+		cfg := &FormatConfig{ShowCount: true}
+		formatter := &JSONFormatter{Config: cfg}
+		jsonStr, err := formatter.Format(res)
 		require.NoError(t, err)
 		require.Contains(t, jsonStr, `"ls": 1`)
 		require.Contains(t, jsonStr, `"cat": 1`)
@@ -127,8 +140,9 @@ func TestResult_JSON(t *testing.T) {
 	})
 
 	t.Run("-pos", func(t *testing.T) {
-		cfg := &Config{ShowPos: true}
-		jsonStr, err := res.JSON(cfg)
+		cfg := &FormatConfig{ShowPos: true}
+		formatter := &JSONFormatter{Config: cfg}
+		jsonStr, err := formatter.Format(res)
 		require.NoError(t, err)
 		require.Contains(t, jsonStr, `"Line": 1`)
 		require.Contains(t, jsonStr, `"FullLine": "ls"`)
@@ -480,8 +494,9 @@ func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
 		},
 	}
 	// Trigger fallback to bash and monokai
-	cfg := &Config{ShowPos: true, UseColor: true, LexerName: "invalid-lexer", StyleName: "invalid-style"}
-	formatted := res.Format(cfg)
+	cfg := &FormatConfig{ShowPos: true, UseColor: true, LexerName: "invalid-lexer", StyleName: "invalid-style"}
+	formatter := &TextFormatter{Config: cfg}
+	formatted, _ := formatter.Format(res)
 	require.Contains(t, formatted, "\033[")
 	require.Contains(t, formatted, "ls")
 }

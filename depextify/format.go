@@ -101,8 +101,29 @@ func highlightCode(code string, lexerName, styleName string, hl *highlightRange)
 	return strings.TrimSpace(sb.String())
 }
 
+// FormatConfig contains settings for output formatting.
+type FormatConfig struct {
+	ShowCount   bool
+	ShowPos     bool
+	UseColor    bool
+	LexerName   string
+	StyleName   string
+	IsDirectory bool
+}
+
+// Formatter defines the interface for formatting the scan results.
+type Formatter interface {
+	Format(result ScanResult) (string, error)
+}
+
+// TextFormatter formats the result as plain text.
+type TextFormatter struct {
+	Config *FormatConfig
+}
+
 // Format returns a formatted string representation of the result.
-func (r ScanResult) Format(c *Config) string {
+func (f *TextFormatter) Format(r ScanResult) (string, error) {
+	c := f.Config
 	var sb strings.Builder
 
 	globalLineWidth := 0
@@ -200,11 +221,17 @@ func (r ScanResult) Format(c *Config) string {
 			}
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
-// JSON returns the JSON encoding of the result.
-func (r ScanResult) JSON(c *Config) (string, error) {
+// JSONFormatter formats the result as JSON.
+type JSONFormatter struct {
+	Config *FormatConfig
+}
+
+// Format returns the JSON encoding of the result.
+func (f *JSONFormatter) Format(r ScanResult) (string, error) {
+	c := f.Config
 	var data interface{} = r
 
 	if !c.ShowPos {
@@ -238,8 +265,14 @@ func (r ScanResult) JSON(c *Config) (string, error) {
 	return string(b), nil
 }
 
-// YAML returns the YAML encoding of the result.
-func (r ScanResult) YAML(c *Config) (string, error) {
+// YAMLFormatter formats the result as YAML.
+type YAMLFormatter struct {
+	Config *FormatConfig
+}
+
+// Format returns the YAML encoding of the result.
+func (f *YAMLFormatter) Format(r ScanResult) (string, error) {
+	c := f.Config
 	var data interface{} = r
 
 	if !c.ShowPos {

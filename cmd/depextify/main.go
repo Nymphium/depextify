@@ -51,20 +51,14 @@ func main() {
 	// Extra ignores are already merged into cfg.Ignores in parseFlags
 
 	scanConfig := &depextify.Config{
-		NoBuiltins:   cfg.IgnoreBuiltins,
-		NoCoreutils:  cfg.IgnoreCoreutils,
-		NoCommon:     cfg.IgnoreCommon,
-		ShowHidden:   cfg.ShowHidden,
+		NoBuiltins:     cfg.IgnoreBuiltins,
+		NoCoreutils:    cfg.IgnoreCoreutils,
+		NoCommon:       cfg.IgnoreCommon,
+		ShowHidden:     cfg.ShowHidden,
 		GitignoreAware: cfg.GitignoreAware,
-		Aggregate:    cfg.Aggregate,
-		ExtraIgnores: cfg.Ignores,
-		Excludes:     cfg.Excludes,
-		ShowCount:    cfg.ShowCount,
-		ShowPos:      cfg.ShowPos,
-		UseColor:     cfg.UseColor,
-		LexerName:    cfg.Lexer,
-		StyleName:    cfg.Style,
-		Format:       cfg.Format,
+		Aggregate:      cfg.Aggregate,
+		ExtraIgnores:   cfg.Ignores,
+		Excludes:       cfg.Excludes,
 	}
 
 	results, err := scanConfig.Scan(cfg.Target)
@@ -73,25 +67,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.Format == "json" {
-		out, err := results.JSON(scanConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(out)
-		return
+	// We need to determine if target was a directory to pass to format config.
+	// Since Scan doesn't return IsDirectory anymore, we check it here.
+	isDir := false
+	if info, err := os.Stat(cfg.Target); err == nil {
+		isDir = info.IsDir()
 	}
 
-	if cfg.Format == "yaml" {
-		out, err := results.YAML(scanConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error formatting YAML: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(out)
-		return
+	formatConfig := &depextify.FormatConfig{
+		ShowCount:   cfg.ShowCount,
+		ShowPos:     cfg.ShowPos,
+		UseColor:    cfg.UseColor,
+		LexerName:   cfg.Lexer,
+		StyleName:   cfg.Style,
+		IsDirectory: isDir,
 	}
 
-	fmt.Print(results.Format(scanConfig))
+	var formatter depextify.Formatter
+	switch cfg.Format {
+	case "json":
+		formatter = &depextify.JSONFormatter{Config: formatConfig}
+	case "yaml":
+		formatter = &depextify.YAMLFormatter{Config: formatConfig}
+	default:
+		formatter = &depextify.TextFormatter{Config: formatConfig}
+	}
+
+	out, err := formatter.Format(results)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(out)
 }

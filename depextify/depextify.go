@@ -14,7 +14,7 @@ import (
 )
 
 type (
-	// Config holds the configuration for scanning and formatting.
+	// Config holds the configuration for scanning.
 	Config struct {
 		NoBuiltins   bool     `yaml:"no_builtins"`
 		NoCoreutils  bool     `yaml:"no_coreutils"`
@@ -24,14 +24,6 @@ type (
 
 		GitignoreAware bool `yaml:"gitignore_aware"`
 		Aggregate      bool `yaml:"aggregate"`
-
-		ShowCount   bool   `yaml:"show_count"`
-		ShowPos     bool   `yaml:"show_pos"`
-		UseColor    bool   `yaml:"use_color"`
-		LexerName   string `yaml:"lexer"`
-		StyleName   string `yaml:"style"`
-		IsDirectory bool   `yaml:"-"`
-		Format      string `yaml:"format"`
 
 		Excludes []string `yaml:"excludes"`
 	}
@@ -192,7 +184,7 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 		return nil, err
 	}
 
-	c.IsDirectory = info.IsDir()
+	isDir := info.IsDir()
 
 	ignores := make(map[string]bool)
 	for _, cmd := range c.ExtraIgnores {
@@ -216,14 +208,14 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 
 	for _, name := range ignoreFiles {
 		path := name
-		if c.IsDirectory {
+		if isDir {
 			path = filepath.Join(target, name)
 		}
 
 		if content, err := os.ReadFile(path); err == nil {
 			lines := strings.Split(string(content), "\n")
 			ignoreLines = append(ignoreLines, lines...)
-		} else if !c.IsDirectory {
+		} else if !isDir {
 			// Try looking in current directory if target is a file
 			if content, err := os.ReadFile(name); err == nil {
 				lines := strings.Split(string(content), "\n")

@@ -268,25 +268,53 @@ func applyYAMLOffset(cmds map[string][]PosInfo, val *yaml.Node, lines [][]byte, 
 	}
 }
 
+// ExtractorMatcher checks if an extractor applies to a given path and returns it.
+type ExtractorMatcher func(path string) Extractor
+
+var extractors []ExtractorMatcher
+
+// RegisterExtractor adds a new extractor matcher to the registry.
+func RegisterExtractor(m ExtractorMatcher) {
+	extractors = append(extractors, m)
+}
+
+func init() {
+	RegisterExtractor(func(path string) Extractor {
+		if reMakefile.MatchString(filepath.Base(path)) {
+			return &MakefileExtractor{}
+		}
+		return nil
+	})
+
+	RegisterExtractor(func(path string) Extractor {
+		if reDockerfile.MatchString(filepath.Base(path)) {
+			return &DockerfileExtractor{}
+		}
+		return nil
+	})
+
+	RegisterExtractor(func(path string) Extractor {
+		if strings.Contains(path, ".github/workflows") && (strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
+			return &YAMLExtractor{}
+		}
+		return nil
+	})
+
+	RegisterExtractor(func(path string) Extractor {
+		if reTaskfile.MatchString(filepath.Base(path)) {
+			return &YAMLExtractor{}
+		}
+		return nil
+	})
+}
+
 // GetExtractor returns the appropriate Extractor for the given file path.
 // It returns nil if no specific extractor matches (caller should decide fallback, e.g. check isShellFile).
 func GetExtractor(path string) Extractor {
-	base := filepath.Base(path)
-
-	if reMakefile.MatchString(base) {
-		return &MakefileExtractor{}
+	for _, match := range extractors {
+		if ext := match(path); ext != nil {
+			return ext
+		}
 	}
-	if reDockerfile.MatchString(base) {
-		return &DockerfileExtractor{}
-	}
-	// GitHub Actions
-	if strings.Contains(path, ".github/workflows") && (strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
-		return &YAMLExtractor{}
-	}
-	// Taskfile
-	if reTaskfile.MatchString(base) {
-		return &YAMLExtractor{}
-	}
-
 	return nil
 }
