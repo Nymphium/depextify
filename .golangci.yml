@@ -14,3 +14,7 @@ linters:
     - gocyclo
     - nilnil
     - importas
+    - revive
+    - gocritic
+    - goconst
+    - unparam

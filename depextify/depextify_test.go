@@ -498,6 +498,35 @@ func TestScan(t *testing.T) {
 		require.Contains(t, res, f1)
 		require.Contains(t, res, f2)
 	})
+
+	t.Run("nested gitignore aware", func(t *testing.T) {
+		dir := t.TempDir()
+		sub := filepath.Join(dir, "sub")
+		require.NoError(t, os.Mkdir(sub, 0755))
+
+		f1 := filepath.Join(dir, "f1.sh")
+		f2 := filepath.Join(sub, "f2.sh")
+		require.NoError(t, os.WriteFile(f1, []byte("echo f1"), 0600))
+		require.NoError(t, os.WriteFile(f2, []byte("echo f2"), 0600))
+
+		// gitignore in sub/
+		gitignore := filepath.Join(sub, ".gitignore")
+		require.NoError(t, os.WriteFile(gitignore, []byte("f2.sh"), 0600))
+
+		config := &Config{GitignoreAware: true}
+		res, err := config.Scan(dir)
+		require.NoError(t, err)
+
+		require.Contains(t, res, f1)
+		require.NotContains(t, res, f2)
+
+		// Ensure it doesn't ignore f2.sh in root if it's not in sub/
+		f3 := filepath.Join(dir, "f2.sh")
+		require.NoError(t, os.WriteFile(f3, []byte("echo f3"), 0600))
+		res, err = config.Scan(dir)
+		require.NoError(t, err)
+		require.Contains(t, res, f3)
+	})
 }
 
 func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {

@@ -42,6 +42,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-count` | Show the occurrence count for each command. | `false` |
 | `-pos` | Show file path, line number, and the source line for each occurrence. | `false` |
 | `-hidden` | Recursively scan hidden files and directories (e.g., `.git`, `.config`). | `false` |
+| `-aggregate` | Aggregate results across all files into a single report for the target. | `false` |
 | `-builtin` | Include shell built-in commands (e.g., `cd`, `echo`, `export`) in the output. | `false` |
 | `-coreutils` | Include GNU Coreutils commands (e.g., `ls`, `cp`, `mv`) in the output. | `false` |
 | `-common` | Include "common" tools (e.g., `grep`, `sed`, `awk`, `curl`, `git`) in the output. | `false` |
@@ -50,8 +51,10 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-no-common` | Explicitly exclude common tools (inverse of `-common`). | `true` |
 | `-color` | Force enable colored output. | `auto` |
 | `-no-color` | Force disable colored output. | `false` |
-| `-ignores` | Comma-separated list of additional commands to ignore. Example: `-ignores=npm,node` | `""` |
-| `-list` | List ignored commands in specified categories and exit. Categories: `builtins`, `coreutils`, `common`, `all`. | `""` |
+| `-gitignore-aware` | Respect `.gitignore` files in directories. | `true` |
+| `-no-gitignore-aware` | Ignore `.gitignore` files. | `false` |
+| `-ignores` | Comma-separated list of additional commands to ignore. | `""` |
+| `-list` | List ignored commands in specified categories and exit. | `""` |
 | `-lexer` | Specify the chroma lexer for highlighting. | `bash` |
 | `-style` | Specify the chroma style for highlighting. | `monokai` |
 | `-format` | Output format. Options: `text`, `json`, `yaml`. | `text` |
@@ -82,12 +85,14 @@ show_pos: false     # Show file positions and source lines
 use_color: true     # Enable colored output
 format: text        # Output format: text, json, yaml
 
+# Scan behavior
+show_hidden: false  # Scan hidden files/directories
+gitignore_aware: true # Respect .gitignore files
+aggregate: false    # Aggregate results cross all files
+
 # Syntax highlighting
 lexer: bash         # Lexer to use for code snippets
 style: monokai      # Chroma style name
-
-# Scan behavior
-show_hidden: false  # Scan hidden files/directories
 
 # Custom exclusions
 ignores:            # List of command names to ignore globally
@@ -106,7 +111,9 @@ excludes:           # List of file/directory glob patterns to skip
 
 ## Ignore Files
 
-You can exclude specific files or directories from being scanned by placing a `.depextifyignore` file in the project root. The syntax follows standard `.gitignore` rules.
+`depextify` respects `.gitignore` and `.depextifyignore` files in a hierarchical manner. When scanning a directory, it will look for these files in the current directory and all subdirectories, applying the ignore rules to their respective paths.
+
+The syntax follows standard `.gitignore` rules. Patterns in a subdirectory's `.gitignore` are scoped to that directory.
 
 **Example `.depextifyignore`:**
 
@@ -154,7 +161,7 @@ scripts/dev-only.sh
 
 ## Library Usage (Go)
 
-`depextify` is structured to be used as a Go library as well.
+`depextify` is structured to be used as a Go library.
 
 ```go
 import (
@@ -174,10 +181,22 @@ func main() {
         panic(err)
     }
 
-    // Process results
-    for cmd, locs := range results.Commands {
-        fmt.Printf("Command: %s, Count: %d\n", cmd, len(locs))
+    // Process results (ScanResult is map[string]map[string][]Occurrence)
+    for file, cmds := range results {
+        fmt.Printf("File: %s\n", file)
+        for cmd, occurrences := range cmds {
+            fmt.Printf("  Command: %s, Count: %d\n", cmd, len(occurrences))
+        }
     }
+
+    // Or use formatters
+    formatter := &depextify.TextFormatter{
+        Config: &depextify.FormatConfig{
+            ShowCount: true,
+        },
+    }
+    out, _ := formatter.Format(results)
+    fmt.Println(out)
 }
 ```
 

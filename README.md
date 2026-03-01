@@ -11,10 +11,12 @@
   - GitHub Actions Workflows (`.github/workflows/*.yml`)
   - `Taskfile.yml`
 - **Smart Filtering**: Built-in lists for shell built-ins, GNU coreutils, and common tools to help you focus on actual external dependencies.
+- **Hierarchical Ignore Support**: Respects `.gitignore` and `.depextifyignore` files in each directory during traversal.
 - **Detailed Reporting**: Show occurrences, line numbers, and even the full line where each command is used.
+- **Result Aggregation**: Summarize findings across the entire project with a single command.
 - **Syntax Highlighting**: Beautifully highlighted output using [chroma](https://github.com/alecthomas/chroma).
 - **Multiple Formats**: Export results as Text, JSON, or YAML.
-- **Configurable**: Project-specific settings via `.depextify.yaml` and `.depextifyignore`.
+- **Configurable**: Project-specific settings via `.depextify.yaml`.
 
 ## Installation
 
@@ -45,10 +47,12 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-count`: Show the number of occurrences for each command.
 - `-pos`: Show the file position (line number) and the full line where each command is used.
 - `-hidden`: Scan hidden files and directories (default: ignore).
+- `-aggregate`: Aggregate results across all scanned files instead of reporting per file.
 - `-[no-]builtin`: Ignore/include shell built-in commands (default: ignore).
 - `-[no-]coreutils`: Ignore/include GNU coreutils in the output (default: ignore).
 - `-[no-]common`: Ignore/include common tools (grep, sed, awk, etc.) in the output (default: ignore).
 - `-[no-]color`: Enable/disable colored output (default: auto).
+- `-[no-]gitignore-aware`: Enable/disable respect for `.gitignore` files (default: enabled).
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
@@ -68,6 +72,8 @@ no_common: true
 show_count: true
 show_pos: true
 use_color: true
+gitignore_aware: true
+aggregate: false
 lexer: bash
 style: monokai
 format: text
@@ -80,7 +86,7 @@ excludes:
 
 ## Ignoring Files
 
-You can exclude files and directories from the scan by creating a `.depextifyignore` file in the target directory. It uses the same syntax as `.gitignore`.
+`depextify` respects `.gitignore` and `.depextifyignore` files. When scanning a directory, it looks for these files in the current directory and all subdirectories, scoping the ignore patterns accordingly. It uses the same syntax as `.gitignore`.
 
 ## Examples
 

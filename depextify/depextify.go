@@ -229,7 +229,7 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 	}
 
 	visited := make(map[string]bool)
-	err = c.walkRecursive(target, ignores, res, visited, matcher)
+	err = c.walkRecursive(target, target, ignores, res, visited, matcher, ignoreLines)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 	return res, nil
 }
 
-func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore) error {
+func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore, ignoreLines []string) error {
 	path = filepath.Clean(path)
 	if visited[path] {
 		return nil
@@ -257,6 +257,46 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 	// Check exclusion (directory)
 	if matcher != nil && matcher.MatchesPath(path) {
 		return nil
+	}
+
+	currentMatcher := matcher
+	currentIgnoreLines := ignoreLines
+
+	// Only check for new ignore files if we are NOT at the root (they are already loaded in Scan)
+	if root != path {
+		ignoreFiles := []string{".depextifyignore"}
+		if c.GitignoreAware {
+			ignoreFiles = append(ignoreFiles, ".gitignore")
+		}
+
+		foundNewIgnore := false
+		for _, name := range ignoreFiles {
+			ignorePath := filepath.Join(path, name)
+			if content, err := os.ReadFile(ignorePath); err == nil {
+				foundNewIgnore = true
+				relDir, _ := filepath.Rel(root, path)
+
+				lines := strings.Split(string(content), "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line == "" || strings.HasPrefix(line, "#") {
+						continue
+					}
+					// Prefix pattern with relative path to scope it
+					if strings.HasPrefix(line, "/") {
+						line = filepath.Join(relDir, line)
+					} else {
+						// Patterns without leading slash match relative to this directory
+						line = filepath.Join(relDir, "**", line)
+					}
+					currentIgnoreLines = append(currentIgnoreLines, line)
+				}
+			}
+		}
+
+		if foundNewIgnore {
+			currentMatcher = ignore.CompileIgnoreLines(currentIgnoreLines...)
+		}
 	}
 
 	entries, err := os.ReadDir(path)
@@ -273,7 +313,7 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 		fullPath := filepath.Join(path, name)
 
 		// Check exclusion (file/subdir)
-		if matcher != nil && matcher.MatchesPath(fullPath) {
+		if currentMatcher != nil && currentMatcher.MatchesPath(fullPath) {
 			continue
 		}
 
@@ -292,7 +332,7 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 				continue
 			}
 			if info.IsDir() {
-				if err := c.walkRecursive(fullPath, ignores, res, visited, matcher); err != nil {
+				if err := c.walkRecursive(root, fullPath, ignores, res, visited, currentMatcher, currentIgnoreLines); err != nil {
 					return err
 				}
 				continue
@@ -300,7 +340,7 @@ func (c *Config) walkRecursive(path string, ignores map[string]bool, res ScanRes
 		}
 
 		if info.IsDir() {
-			if err := c.walkRecursive(fullPath, ignores, res, visited, matcher); err != nil {
+			if err := c.walkRecursive(root, fullPath, ignores, res, visited, currentMatcher, currentIgnoreLines); err != nil {
 				return err
 			}
 		} else {
