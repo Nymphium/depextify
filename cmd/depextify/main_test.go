@@ -9,17 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExamples(t *testing.T) {
+func TestIntegration(t *testing.T) {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
 	// Since we are in cmd/depextify/ directory during test
-	examplesDir := filepath.Join(wd, "..", "..", "examples")
+	testDataDir := filepath.Join(wd, "..", "..", "testdata")
 
-	t.Run("entire examples directory", func(t *testing.T) {
+	t.Run("entire testdata directory", func(t *testing.T) {
 		// Scan all (no-builtin=false, no-coreutils=false, no-common=false, showHidden=false)
 		config := &depextify.Config{}
-		res, err := config.Scan(examplesDir)
+		res, err := config.Scan(testDataDir)
 		require.NoError(t, err)
 
 		// Flatten results for easy checking
@@ -37,9 +37,9 @@ func TestExamples(t *testing.T) {
 	})
 
 	t.Run("dir_test recursive traversal", func(t *testing.T) {
-		dirTestPath := filepath.Join(examplesDir, "dir_test")
+		dirTestPath := filepath.Join(testDataDir, "dir_test")
 		if _, err := os.Stat(dirTestPath); os.IsNotExist(err) {
-			t.Skip("examples/dir_test does not exist")
+			t.Skip("testdata/dir_test does not exist")
 		}
 
 		config := &depextify.Config{}
@@ -53,7 +53,7 @@ func TestExamples(t *testing.T) {
 			}
 		}
 
-		expected := []string{"curl", "grep", "ls", "sleep", "wget"}
+		expected := []string{"curl", "grep", "ls", "sleep", "wget", "jq"}
 		for _, e := range expected {
 			require.Contains(t, allCommands, e)
 		}

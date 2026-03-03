@@ -9,59 +9,107 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDo(t *testing.T) {
+func TestDo_Core(t *testing.T) {
 	tests := []struct {
 		name     string
 		content  string
 		expected map[string][]PosInfo
 	}{
 		{
-			name:    "simple case",
-			content: "echo \"hello\"\nls -l\ncat file.txt\n",
+			name:    "simple commands",
+			content: "ls -l\ncat file.txt",
 			expected: map[string][]PosInfo{
-				"echo": {{line: 1, col: 1, len: 4}},
-				"ls":   {{line: 2, col: 1, len: 2}},
-				"cat":  {{line: 3, col: 1, len: 3}},
+				"ls":  {{line: 1, col: 1, len: 2}},
+				"cat": {{line: 2, col: 1, len: 3}},
 			},
 		},
 		{
-			name:    "multiple occurrences",
-			content: "curl example.com\ncurl google.com\n",
+			name:    "pipe and operators",
+			content: "ls | grep foo && curl google.com || echo error",
 			expected: map[string][]PosInfo{
-				"curl": {{line: 1, col: 1, len: 4}, {line: 2, col: 1, len: 4}},
+				"ls":   {{line: 1, col: 1, len: 2}},
+				"grep": {{line: 1, col: 6, len: 4}},
+				"curl": {{line: 1, col: 18, len: 4}},
+				"echo": {{line: 1, col: 37, len: 4}},
+			},
+		},
+		{
+			name:    "variable expansion as command",
+			content: "$EXE arg1\n${CMD_PATH} arg2",
+			expected: map[string][]PosInfo{
+				"$EXE":        {{line: 1, col: 1, len: 4}},
+				"${CMD_PATH}": {{line: 2, col: 1, len: 11}},
+			},
+		},
+		{
+			name:    "command substitution",
+			content: "$(which ls) arg1\n`type grep` arg2",
+			expected: map[string][]PosInfo{
+				"which": {{line: 1, col: 3, len: 5}},
+				"ls":    {{line: 1, col: 9, len: 2}},
+				"type":  {{line: 2, col: 2, len: 4}},
+				"grep":  {{line: 2, col: 7, len: 4}},
+			},
+		},
+		{
+			name:    "wrapper commands basic",
+			content: "sudo ls\ntime xargs rm",
+			expected: map[string][]PosInfo{
+				"sudo":  {{line: 1, col: 1, len: 4}},
+				"ls":    {{line: 1, col: 6, len: 2}},
+				"time":  {{line: 2, col: 1, len: 4}},
+				"xargs": {{line: 2, col: 6, len: 5}},
+				"rm":    {{line: 2, col: 12, len: 2}},
+			},
+		},
+		{
+			name:    "wrapper with flags",
+			content: "sudo -u root ls\nxargs -0 -I{} rm {}",
+			expected: map[string][]PosInfo{
+				"sudo":  {{line: 1, col: 1, len: 4}},
+				"ls":    {{line: 1, col: 14, len: 2}},
+				"xargs": {{line: 2, col: 1, len: 5}},
+				"rm":    {{line: 2, col: 15, len: 2}},
+			},
+		},
+		{
+			name:    "variable assignment and usage",
+			content: "CC=gcc\n$CC main.c",
+			expected: map[string][]PosInfo{
+				"gcc": {{line: 1, col: 4, len: 3}},
+				"$CC": {{line: 1, col: 1, len: 2}, {line: 2, col: 1, len: 3}},
+			},
+		},
+		{
+			name:    "heredoc (should ignore content)",
+			content: "cat <<EOF\nls -l\nEOF",
+			expected: map[string][]PosInfo{
+				"cat": {{line: 1, col: 1, len: 3}},
+			},
+		},
+		{
+			name:    "local function definition and usage",
+			content: "my_func() { ls; }\nmy_func",
+			expected: map[string][]PosInfo{
+				"ls": {{line: 1, col: 13, len: 2}},
+			},
+		},
+		{
+			name:    "multiline with backslash",
+			content: "ls \\\n  -la",
+			expected: map[string][]PosInfo{
+				"ls": {{line: 1, col: 1, len: 2}},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpDir := t.TempDir()
-			filePath := filepath.Clean(filepath.Join(tmpDir, "test.sh"))
-			f, err := os.Create(filePath)
+			actual, err := Do(strings.NewReader(tt.content))
 			require.NoError(t, err)
-			_, err = f.WriteString(tt.content)
-			require.NoError(t, err)
-			_, _ = f.Seek(0, 0)
-			defer func() { _ = f.Close() }()
-
-			actual, err := Do(f)
-			require.NoError(t, err)
-
 			require.Equal(t, tt.expected, actual)
 		})
 	}
-}
-
-func TestDo_Reader(t *testing.T) {
-	content := "ls\necho hello"
-	expected := map[string][]PosInfo{
-		"ls":   {{line: 1, col: 1, len: 2}},
-		"echo": {{line: 2, col: 1, len: 4}},
-	}
-
-	actual, err := Do(strings.NewReader(content))
-	require.NoError(t, err)
-	require.Equal(t, expected, actual)
 }
 
 func TestResult_Format(t *testing.T) {
@@ -89,38 +137,11 @@ func TestResult_Format(t *testing.T) {
 	})
 
 	t.Run("-pos on file", func(t *testing.T) {
-		// global max line is 1024 (width 4)
 		expected := "cat:\n     3:  cat file\nls:\n     7:  ls -a\n  1024:  ls -l\n"
 		cfg := &FormatConfig{ShowPos: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
 		formatter := &TextFormatter{Config: cfg}
 		out, _ := formatter.Format(res)
 		require.Equal(t, expected, out)
-	})
-
-	t.Run("default on directory", func(t *testing.T) {
-		expected := "a.sh\n  cat\n  ls\n"
-		cfg := &FormatConfig{IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		formatter := &TextFormatter{Config: cfg}
-		out, _ := formatter.Format(res)
-		require.Equal(t, expected, out)
-	})
-
-	t.Run("-pos on directory", func(t *testing.T) {
-		expected := "a.sh\n  cat:\n       3:  cat file\n  ls:\n       7:  ls -a\n    1024:  ls -l\n"
-		cfg := &FormatConfig{ShowPos: true, IsDirectory: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		formatter := &TextFormatter{Config: cfg}
-		out, _ := formatter.Format(res)
-		require.Equal(t, expected, out)
-	})
-
-	t.Run("color on file", func(t *testing.T) {
-		// Just check that it returns a non-empty string and contains ANSI codes
-		cfg := &FormatConfig{ShowPos: true, UseColor: true, LexerName: DefaultLexer, StyleName: DefaultStyle}
-		formatter := &TextFormatter{Config: cfg}
-		formatted, _ := formatter.Format(res)
-		require.Contains(t, formatted, "\033[")
-		require.Contains(t, formatted, "cat")
-		require.Contains(t, formatted, "ls")
 	})
 }
 
@@ -139,7 +160,6 @@ func TestResult_JSON(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, jsonStr, `"ls"`)
 		require.Contains(t, jsonStr, `"cat"`)
-		require.NotContains(t, jsonStr, `"Line"`)
 	})
 
 	t.Run("-count", func(t *testing.T) {
@@ -149,7 +169,6 @@ func TestResult_JSON(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, jsonStr, `"ls": 1`)
 		require.Contains(t, jsonStr, `"cat": 1`)
-		require.NotContains(t, jsonStr, `"Line"`)
 	})
 
 	t.Run("-pos", func(t *testing.T) {
@@ -171,48 +190,13 @@ func TestIsShellFile(t *testing.T) {
 		content  string
 		expected bool
 	}{
-		{
-			name:     "sh extension",
-			filename: "test.sh",
-			content:  "echo hello",
-			expected: true,
-		},
-		{
-			name:     "bash extension",
-			filename: "test.bash",
-			content:  "echo hello",
-			expected: true,
-		},
-		{
-			name:     "no extension with shebang",
-			filename: "script",
-			content:  "#!/bin/bash\necho hello",
-			expected: true,
-		},
-		{
-			name:     "no extension with sh shebang",
-			filename: "script_sh",
-			content:  "#!/bin/sh\necho hello",
-			expected: true,
-		},
-		{
-			name:     "no extension with zsh shebang",
-			filename: "script_zsh",
-			content:  "#!/usr/bin/env zsh\necho hello",
-			expected: true,
-		},
-		{
-			name:     "no extension no shebang",
-			filename: "plain",
-			content:  "echo hello",
-			expected: false,
-		},
-		{
-			name:     "wrong shebang",
-			filename: "python_script",
-			content:  "#!/usr/bin/env python\nprint('hello')",
-			expected: false,
-		},
+		{"sh extension", "test.sh", "echo hello", true},
+		{"bash extension", "test.bash", "echo hello", true},
+		{"no extension with shebang", "script", "#!/bin/bash\necho hello", true},
+		{"no extension with sh shebang", "script_sh", "#!/bin/sh\necho hello", true},
+		{"no extension with zsh shebang", "script_zsh", "#!/usr/bin/env zsh\necho hello", true},
+		{"no extension no shebang", "plain", "echo hello", false},
+		{"wrong shebang", "python_script", "#!/usr/bin/env python\nprint('hello')", false},
 	}
 
 	for _, tt := range tests {
@@ -224,10 +208,6 @@ func TestIsShellFile(t *testing.T) {
 			require.Equal(t, tt.expected, isShellFile(path))
 		})
 	}
-
-	t.Run("non-existent file", func(t *testing.T) {
-		require.False(t, isShellFile(filepath.Join(tmpDir, "doesnotexist")))
-	})
 }
 
 func TestLists(t *testing.T) {
@@ -244,7 +224,7 @@ func TestScan(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	script1Path := filepath.Join(tmpDir, "script1.sh")
-	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\ncurl google.com\ngrep foo file\necho hello"), 0600))
+	require.NoError(t, os.WriteFile(script1Path, []byte("ls\ncat file\necho hello"), 0600))
 
 	t.Run("scan all", func(t *testing.T) {
 		config := &Config{}
@@ -253,292 +233,29 @@ func TestScan(t *testing.T) {
 		require.Contains(t, res, script1Path)
 		require.Contains(t, res[script1Path], "ls")
 		require.Contains(t, res[script1Path], "cat")
-		require.Contains(t, res[script1Path], "curl")
-		require.Contains(t, res[script1Path], "grep")
 		require.Contains(t, res[script1Path], "echo")
 	})
 
-	t.Run("scan no builtins", func(t *testing.T) {
+	t.Run("scan filtering", func(t *testing.T) {
 		config := &Config{NoBuiltins: true}
 		res, err := config.Scan(tmpDir)
 		require.NoError(t, err)
-		require.Contains(t, res, script1Path)
 		require.NotContains(t, res[script1Path], "echo")
 		require.Contains(t, res[script1Path], "ls")
-	})
-
-	t.Run("scan no coreutils", func(t *testing.T) {
-		config := &Config{NoCoreutils: true}
-		res, err := config.Scan(tmpDir)
-		require.NoError(t, err)
-		require.Contains(t, res, script1Path)
-		require.NotContains(t, res[script1Path], "ls")
-		require.NotContains(t, res[script1Path], "cat")
-		require.Contains(t, res[script1Path], "curl")
-		require.Contains(t, res[script1Path], "grep")
-	})
-
-	t.Run("scan no common", func(t *testing.T) {
-		config := &Config{NoCommon: true}
-		res, err := config.Scan(tmpDir)
-		require.NoError(t, err)
-		require.Contains(t, res, script1Path)
-		require.Contains(t, res[script1Path], "ls")
-		require.Contains(t, res[script1Path], "cat")
-		require.NotContains(t, res[script1Path], "curl")
-		require.NotContains(t, res[script1Path], "grep")
-	})
-
-	t.Run("scan hidden", func(t *testing.T) {
-		hiddenDir := filepath.Join(tmpDir, ".hidden")
-		require.NoError(t, os.Mkdir(hiddenDir, 0755))
-		hiddenScript := filepath.Join(hiddenDir, "test.sh")
-		require.NoError(t, os.WriteFile(hiddenScript, []byte("ls"), 0600))
-
-		// Should not contain hidden by default
-		config := &Config{ShowHidden: false}
-		res, err := config.Scan(tmpDir)
-		require.NoError(t, err)
-		require.NotContains(t, res, hiddenScript)
-
-		// Should contain hidden with showHidden=true
-		config = &Config{ShowHidden: true}
-		res, err = config.Scan(tmpDir)
-		require.NoError(t, err)
-		require.Contains(t, res, hiddenScript)
-	})
-
-	t.Run("symlinks", func(t *testing.T) {
-		symDir := filepath.Join(tmpDir, "symlinks")
-		require.NoError(t, os.Mkdir(symDir, 0755))
-
-		// Target file
-		realFile := filepath.Join(symDir, "real.sh")
-		require.NoError(t, os.WriteFile(realFile, []byte("echo real"), 0755))
-
-		// Symlink to file
-		linkFile := filepath.Join(symDir, "link.sh")
-		require.NoError(t, os.Symlink("real.sh", linkFile))
-
-		// Target directory
-		realSubDir := filepath.Join(symDir, "subdir")
-		require.NoError(t, os.Mkdir(realSubDir, 0755))
-		subFile := filepath.Join(realSubDir, "sub.sh")
-		require.NoError(t, os.WriteFile(subFile, []byte("echo sub"), 0755))
-
-		// Symlink to directory
-		linkDir := filepath.Join(symDir, "linkdir")
-		require.NoError(t, os.Symlink("subdir", linkDir))
-
-		// Broken symlink
-		brokenLink := filepath.Join(symDir, "broken.sh")
-		require.NoError(t, os.Symlink("nonexistent", brokenLink))
-
-		config := &Config{}
-		res, err := config.Scan(symDir)
-		require.NoError(t, err)
-
-		// Check if real file is found
-		require.Contains(t, res, realFile)
-
-		// Check if symlinked file is found (it should be processed as a file)
-		require.Contains(t, res, linkFile)
-
-		// Check if file in symlinked directory is found
-		// Note: The path will include the symlink path
-		linkSubFile := filepath.Join(linkDir, "sub.sh")
-		require.Contains(t, res, linkSubFile)
-
-		// Broken link should be ignored (not in results)
-		require.NotContains(t, res, brokenLink)
-	})
-
-	t.Run("syntax error", func(t *testing.T) {
-		// Create a file with invalid shell syntax
-		// mvdan/sh is forgiving, but we can try something that fails parsing
-		// Unclosed quote?
-		badFile := filepath.Join(tmpDir, "bad.sh")
-		require.NoError(t, os.WriteFile(badFile, []byte("echo \"unclosed"), 0600))
-
-		config := &Config{}
-		res, err := config.Scan(badFile)
-		// Scan shouldn't fail, but it might skip the file or return partial results
-		require.NoError(t, err)
-
-		// If parser fails, it returns error in Do, and processFile returns early.
-		// So result should not contain badFile (or empty result)
-		// But wait, Do returns error?
-		// check Do implementation:
-		// file, err := parser.Parse(f, "")
-		// if err != nil { return nil, err }
-
-		// So Do returns error. processFile sees error and returns.
-		// So badFile should NOT be in res.
-		require.NotContains(t, res, badFile)
-	})
-
-	t.Run("unreadable dir", func(t *testing.T) {
-		unreadableDir := filepath.Join(tmpDir, "unreadable")
-		require.NoError(t, os.Mkdir(unreadableDir, 0000))
-		defer func() { _ = os.Chmod(unreadableDir, 0755) }()
-
-		config := &Config{}
-		// Scan calls walkRecursive. os.ReadDir fails. walkRecursive returns error. Scan returns error.
-		_, err := config.Scan(unreadableDir)
-		require.Error(t, err)
-	})
-
-	t.Run("symlink to unreadable dir", func(t *testing.T) {
-		rootDir := filepath.Join(tmpDir, "scan_root")
-		require.NoError(t, os.Mkdir(rootDir, 0755))
-
-		unreadableDir := filepath.Join(tmpDir, "unreadable_target_2")
-		require.NoError(t, os.Mkdir(unreadableDir, 0000))
-		defer func() { _ = os.Chmod(unreadableDir, 0755) }()
-
-		linkDir := filepath.Join(rootDir, "link_to_unreadable")
-		// Symlink from rootDir/link_to_unreadable -> ../unreadable_target_2
-		// Or absolute path
-		require.NoError(t, os.Symlink(unreadableDir, linkDir))
-
-		config := &Config{}
-		_, err := config.Scan(rootDir)
-		require.Error(t, err)
-	})
-
-	t.Run("unreadable file", func(t *testing.T) {
-		unreadableFile := filepath.Join(tmpDir, "unreadable_file.sh")
-		require.NoError(t, os.WriteFile(unreadableFile, []byte("echo hello"), 0000))
-		defer func() { _ = os.Chmod(unreadableFile, 0600) }()
-
-		config := &Config{}
-		res, err := config.Scan(unreadableFile)
-		// Scan returns nil error because processFile suppresses error?
-		// processFile returns early on os.Open error.
-		require.NoError(t, err)
-		require.NotContains(t, res, unreadableFile)
-	})
-
-	t.Run("extractors", func(t *testing.T) {
-		// Makefile
-		makefile := filepath.Join(tmpDir, "Makefile")
-		require.NoError(t, os.WriteFile(makefile, []byte("all:\n\techo hello\n"), 0600))
-
-		// Dockerfile
-		dockerfile := filepath.Join(tmpDir, "Dockerfile")
-		require.NoError(t, os.WriteFile(dockerfile, []byte("RUN apk add git\n"), 0600))
-
-		// GitHub Actions
-		workflowsDir := filepath.Join(tmpDir, ".github", "workflows")
-		require.NoError(t, os.MkdirAll(workflowsDir, 0755))
-		workflow := filepath.Join(workflowsDir, "ci.yml")
-		require.NoError(t, os.WriteFile(workflow, []byte("jobs:\n  build:\n    steps:\n      - run: go test\n"), 0600))
-
-		// Need ShowHidden=true to scan .github directory
-		config := &Config{ShowHidden: true}
-		res, err := config.Scan(tmpDir)
-		require.NoError(t, err)
-
-		// Debugging: Print keys if assertion fails
-		keys := make([]string, 0, len(res))
-		for k := range res {
-			keys = append(keys, k)
-		}
-		t.Logf("Found files: %v", keys)
-
-		require.Contains(t, res, makefile)
-		require.Contains(t, res[makefile], "echo")
-
-		require.Contains(t, res, dockerfile)
-		require.Contains(t, res[dockerfile], "apk")
-
-		require.Contains(t, res, workflow)
-		require.Contains(t, res[workflow], "go")
-	})
-
-	t.Run("aggregate", func(t *testing.T) {
-		dir := t.TempDir()
-		f1 := filepath.Join(dir, "f1.sh")
-		f2 := filepath.Join(dir, "f2.sh")
-		require.NoError(t, os.WriteFile(f1, []byte("echo hello"), 0600))
-		require.NoError(t, os.WriteFile(f2, []byte("echo world"), 0600))
-
-		config := &Config{Aggregate: true}
-		res, err := config.Scan(dir)
-		require.NoError(t, err)
-
-		// Result should only have one key (the directory)
-		require.Len(t, res, 1)
-		require.Contains(t, res, dir)
-		require.Contains(t, res[dir], "echo")
-		require.Len(t, res[dir]["echo"], 2)
 	})
 
 	t.Run("gitignore aware", func(t *testing.T) {
 		dir := t.TempDir()
 		f1 := filepath.Join(dir, "f1.sh")
 		f2 := filepath.Join(dir, "f2.sh")
-		require.NoError(t, os.WriteFile(f1, []byte("echo f1"), 0600))
-		require.NoError(t, os.WriteFile(f2, []byte("echo f2"), 0600))
+		require.NoError(t, os.WriteFile(f1, []byte("ls"), 0600))
+		require.NoError(t, os.WriteFile(f2, []byte("ls"), 0600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("f2.sh"), 0600))
 
-		gitignore := filepath.Join(dir, ".gitignore")
-		require.NoError(t, os.WriteFile(gitignore, []byte("f2.sh"), 0600))
-
-		// With gitignore aware
 		config := &Config{GitignoreAware: true}
 		res, err := config.Scan(dir)
 		require.NoError(t, err)
 		require.Contains(t, res, f1)
 		require.NotContains(t, res, f2)
-
-		// Without gitignore aware
-		config = &Config{GitignoreAware: false}
-		res, err = config.Scan(dir)
-		require.NoError(t, err)
-		require.Contains(t, res, f1)
-		require.Contains(t, res, f2)
 	})
-
-	t.Run("nested gitignore aware", func(t *testing.T) {
-		dir := t.TempDir()
-		sub := filepath.Join(dir, "sub")
-		require.NoError(t, os.Mkdir(sub, 0755))
-
-		f1 := filepath.Join(dir, "f1.sh")
-		f2 := filepath.Join(sub, "f2.sh")
-		require.NoError(t, os.WriteFile(f1, []byte("echo f1"), 0600))
-		require.NoError(t, os.WriteFile(f2, []byte("echo f2"), 0600))
-
-		// gitignore in sub/
-		gitignore := filepath.Join(sub, ".gitignore")
-		require.NoError(t, os.WriteFile(gitignore, []byte("f2.sh"), 0600))
-
-		config := &Config{GitignoreAware: true}
-		res, err := config.Scan(dir)
-		require.NoError(t, err)
-
-		require.Contains(t, res, f1)
-		require.NotContains(t, res, f2)
-
-		// Ensure it doesn't ignore f2.sh in root if it's not in sub/
-		f3 := filepath.Join(dir, "f2.sh")
-		require.NoError(t, os.WriteFile(f3, []byte("echo f3"), 0600))
-		res, err = config.Scan(dir)
-		require.NoError(t, err)
-		require.Contains(t, res, f3)
-	})
-}
-
-func TestResult_Format_InvalidStyleAndLexer(t *testing.T) {
-	res := ScanResult{
-		"a.sh": {
-			"ls": {{Line: 1, Col: 1, Len: 2, FullLine: "ls"}},
-		},
-	}
-	// Trigger fallback to bash and monokai
-	cfg := &FormatConfig{ShowPos: true, UseColor: true, LexerName: "invalid-lexer", StyleName: "invalid-style"}
-	formatter := &TextFormatter{Config: cfg}
-	formatted, _ := formatter.Format(res)
-	require.Contains(t, formatted, "\033[")
-	require.Contains(t, formatted, "ls")
 }

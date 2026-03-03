@@ -1,0 +1,3 @@
+cat <<HEREDOC
+ls
+HEREDOC

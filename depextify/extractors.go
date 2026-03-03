@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 	"mvdan.cc/sh/v3/syntax"
@@ -43,50 +44,58 @@ var (
 )
 
 // analyzeShellCode parses the given shell code and returns command occurrences.
-// Positions are relative to the start of the code string.
-func analyzeShellCode(code string) (map[string][]PosInfo, error) {
+func analyzeShellCode(content []byte) (map[string][]PosInfo, error) {
 	parser := syntax.NewParser()
-	file, err := parser.Parse(strings.NewReader(code), "")
+	file, err := parser.Parse(bytes.NewReader(content), "")
 	if err != nil {
 		return nil, err
 	}
 
 	localFuncs := collectLocalFuncs(file)
-	return collectCommands(file, localFuncs), nil
+	return collectCommands(file, localFuncs, content), nil
 }
 
-func mergeResults(dest, src map[string][]PosInfo, lineOffset uint, colOffset uint) {
+func mergeResults(dest, src map[string][]PosInfo, lineOffset uint) {
 	for cmd, infos := range src {
 		for _, info := range infos {
 			info.line += lineOffset
-			info.col += colOffset
 			dest[cmd] = append(dest[cmd], info)
 		}
 	}
 }
 
-// Extract extracts commands from shell code.
+// Extract implements Extractor for shell scripts.
 func (e *ShellExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
-	return analyzeShellCode(string(content))
+	return analyzeShellCode(content)
 }
 
-// Extract extracts commands from Makefile content.
+// Extract implements Extractor for Makefiles.
 func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	results := make(map[string][]PosInfo)
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 
 	lineNum := 0
+	var buffer strings.Builder
+	startLine := 0
+	inRecipe := false
 
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
 
 		if strings.HasPrefix(line, "\t") {
-			runes := []rune(line)
-			if len(runes) > 0 && runes[0] == '\t' {
-				runes[0] = ' ' // Replace tab with space
+			if !inRecipe {
+				inRecipe = true
+				startLine = lineNum
+				buffer.Reset()
+			}
 
-				// Replace prefixes
+			runes := []rune(line)
+			// Replace tab with space to maintain alignment
+			runes[0] = ' '
+
+			// If it's the start of a recipe line, replace prefixes
+			if !strings.Contains(buffer.String(), "\n") {
 			loop:
 				for i := 1; i < len(runes); i++ {
 					switch runes[i] {
@@ -98,15 +107,79 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error
 						break loop
 					}
 				}
+			}
 
-				script := string(runes)
-				cmds, err := analyzeShellCode(script)
+			scriptLine := string(runes)
+			buffer.WriteString(scriptLine)
+
+			if !strings.HasSuffix(strings.TrimRightFunc(line, unicode.IsSpace), "\\") {
+				// End of multi-line or single line command
+				script := buffer.String()
+				cmds, err := analyzeShellCode([]byte(script))
 				if err == nil {
-					mergeResults(results, cmds, uint(lineNum-1), 0)
+					mergeResults(results, cmds, uint(startLine-1))
+				}
+				inRecipe = false
+				buffer.Reset()
+			} else {
+				// Continue to next line
+				buffer.WriteString("\n")
+			}
+		} else {
+			// Not a recipe line
+			if inRecipe {
+				script := buffer.String()
+				cmds, err := analyzeShellCode([]byte(script))
+				if err == nil {
+					mergeResults(results, cmds, uint(startLine-1))
+				}
+				inRecipe = false
+				buffer.Reset()
+			}
+
+			// Check for Makefile assignment (e.g., CC = gcc)
+			trimmed := strings.TrimSpace(line)
+			if idx := strings.Index(trimmed, "="); idx > 0 {
+				namePart := strings.TrimSpace(trimmed[:idx])
+				name := strings.TrimRight(namePart, ":?+")
+				name = strings.TrimSpace(name)
+
+				if name != "" {
+					col := strings.Index(line, name)
+					if col >= 0 {
+						// Track the variable being defined
+						results["$"+name] = append(results["$"+name], PosInfo{
+							line: uint(lineNum),
+							col:  uint(col + 1),
+							len:  uint(len(name)),
+						})
+					}
+				}
+
+				valPart := strings.TrimSpace(trimmed[idx+1:])
+				// Track variable assignment values if they look like potential commands.
+				if valPart != "" && !strings.Contains(valPart, " ") && !strings.HasPrefix(valPart, "-") && !strings.HasPrefix(valPart, "/") && !strings.HasPrefix(valPart, "./") {
+					col := strings.Index(line, valPart)
+					if col >= 0 {
+						results[valPart] = append(results[valPart], PosInfo{
+							line: uint(lineNum),
+							col:  uint(col + 1),
+							len:  uint(len(valPart)),
+						})
+					}
 				}
 			}
 		}
 	}
+
+	if inRecipe {
+		script := buffer.String()
+		cmds, err := analyzeShellCode([]byte(script))
+		if err == nil {
+			mergeResults(results, cmds, uint(startLine-1))
+		}
+	}
+
 	return results, nil
 }
 
@@ -133,9 +206,9 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, err
 				// End of RUN
 				script := buffer.String()
 
-				cmds, err := analyzeShellCode(script)
+				cmds, err := analyzeShellCode([]byte(script))
 				if err == nil {
-					mergeResults(results, cmds, uint(startLine-1), 0)
+					mergeResults(results, cmds, uint(startLine-1))
 				}
 
 				inRun = false
@@ -164,11 +237,47 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, err
 				if !strings.HasSuffix(trimmed, "\\") {
 					// Single line RUN
 					inRun = false
-					cmds, err := analyzeShellCode(buffer.String())
+					cmds, err := analyzeShellCode([]byte(buffer.String()))
 					if err == nil {
-						mergeResults(results, cmds, uint(startLine-1), 0)
+						mergeResults(results, cmds, uint(startLine-1))
 					}
 					buffer.Reset()
+				}
+			}
+		} else if strings.HasPrefix(trimmed, "ENV") || strings.HasPrefix(trimmed, "ARG") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				var name string
+				var val string
+				if strings.Contains(fields[1], "=") {
+					parts := strings.SplitN(fields[1], "=", 2)
+					name = parts[0]
+					val = parts[1]
+				} else if len(fields) >= 3 {
+					name = fields[1]
+					val = fields[2]
+				}
+
+				if name != "" {
+					col := strings.Index(line, name)
+					if col >= 0 {
+						results["$"+name] = append(results["$"+name], PosInfo{
+							line: uint(lineNum),
+							col:  uint(col + 1),
+							len:  uint(len(name)),
+						})
+					}
+				}
+
+				if val != "" && !strings.Contains(val, " ") && !strings.HasPrefix(val, "-") && !strings.HasPrefix(val, "/") && !strings.HasPrefix(val, "./") {
+					col := strings.Index(line, val)
+					if col >= 0 {
+						results[val] = append(results[val], PosInfo{
+							line: uint(lineNum),
+							col:  uint(col + 1),
+							len:  uint(len(val)),
+						})
+					}
 				}
 			}
 		}
@@ -194,17 +303,17 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 				key := n.Content[i]
 				val := n.Content[i+1]
 
-				// GitHub Actions uses "run", Taskfile uses "cmd" or "cmds"
-				if (key.Value == "run" || key.Value == "cmd") && val.Kind == yaml.ScalarNode {
-					cPositions, err := analyzeShellCode(val.Value)
+				switch {
+				case (key.Value == "run" || key.Value == "cmd") && val.Kind == yaml.ScalarNode:
+					cPositions, err := analyzeShellCode([]byte(val.Value))
 					if err == nil {
 						applyYAMLOffset(cPositions, val, lines, results)
 					}
-				} else if key.Value == "cmds" && val.Kind == yaml.SequenceNode {
+				case key.Value == "cmds" && val.Kind == yaml.SequenceNode:
 					for _, item := range val.Content {
 						switch item.Kind {
 						case yaml.ScalarNode:
-							cPositions, err := analyzeShellCode(item.Value)
+							cPositions, err := analyzeShellCode([]byte(item.Value))
 							if err == nil {
 								applyYAMLOffset(cPositions, item, lines, results)
 							}
@@ -212,11 +321,35 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 							// Taskfile can have cmds: [ { cmd: "..." } ]
 							for j := 0; j < len(item.Content); j += 2 {
 								if item.Content[j].Value == "cmd" && item.Content[j+1].Kind == yaml.ScalarNode {
-									cPositions, err := analyzeShellCode(item.Content[j+1].Value)
+									cPositions, err := analyzeShellCode([]byte(item.Content[j+1].Value))
 									if err == nil {
 										applyYAMLOffset(cPositions, item.Content[j+1], lines, results)
 									}
 								}
+							}
+						}
+					}
+				case key.Value == "env" && val.Kind == yaml.MappingNode:
+					for j := 0; j < len(val.Content); j += 2 {
+						k := val.Content[j]
+						v := val.Content[j+1]
+
+						// Track variable name
+						name := k.Value
+						if name != "" {
+							tmp := map[string][]PosInfo{
+								"$" + name: {{line: 1, col: 1, len: uint(len(name))}},
+							}
+							applyYAMLOffset(tmp, k, lines, results)
+						}
+
+						if v.Kind == yaml.ScalarNode {
+							valStr := v.Value
+							if valStr != "" && !strings.Contains(valStr, " ") && !strings.HasPrefix(valStr, "-") && !strings.HasPrefix(valStr, "/") && !strings.HasPrefix(valStr, "./") {
+								tmp := map[string][]PosInfo{
+									valStr: {{line: 1, col: 1, len: uint(len(valStr))}},
+								}
+								applyYAMLOffset(tmp, v, lines, results)
 							}
 						}
 					}

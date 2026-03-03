@@ -31,7 +31,7 @@ go install github.com/nymphium/depextify/cmd/depextify@latest
 You can run `depextify` directly without installing it using Nix:
 
 ```sh
-nix run github:nymphium/depextify -- examples/test.sh
+nix run github:nymphium/depextify -- examples/sample.sh
 ```
 
 ## Usage
@@ -94,7 +94,7 @@ excludes:
 
 ```sh
 $ depextify .
-examples/test.sh
+examples/sample.sh
   notify-send
   jq
 ```
@@ -102,7 +102,7 @@ examples/test.sh
 ### Show positions and counts
 
 ```sh
-$ depextify -pos -count examples/test.sh
+$ depextify -pos -count examples/sample.sh
 jq: 1
   24:  echo "$RESPONSE" | jq '.status'
 notify-send: 1
@@ -112,7 +112,7 @@ notify-send: 1
 ### Include coreutils and common tools
 
 ```sh
-$ depextify -builtin -coreutils -common examples/test.sh
+$ depextify -builtin -coreutils -common examples/sample.sh
 curl
 date
 echo

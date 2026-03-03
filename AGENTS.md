@@ -8,7 +8,7 @@ This project uses **Nix** and **direnv** for environment management and reproduc
 The tool can be built or run directly using Nix:
 ```sh
 nix build .#default
-nix run . -- examples/test.sh
+nix run . -- examples/sample.sh
 ```
 
 `gomod2nix.toml` must be updated after `go.mod` is updated:

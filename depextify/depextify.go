@@ -62,23 +62,94 @@ func collectLocalFuncs(file *syntax.File) map[string]bool {
 	return localFuncs
 }
 
-// collectCommands() collects command names from CallExpr nodes with filtering:
+// collectCommands() collects command names from various nodes with filtering:
 // - not local functions
 // - not starting with '-'
-func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][]PosInfo {
+func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byte) map[string][]PosInfo {
 	commands := make(map[string][]PosInfo)
 
-	syntax.Walk(file, func(node syntax.Node) bool {
-		if x, ok := node.(*syntax.CallExpr); ok {
-			if len(x.Args) > 0 && len(x.Args[0].Parts) == 1 {
-				if part, ok := x.Args[0].Parts[0].(*syntax.Lit); ok {
-					cmd := part.Value
+	// List of commands that take another command as an argument
+	wrappers := map[string]bool{
+		"sudo":    true,
+		"xargs":   true,
+		"time":    true,
+		"exec":    true,
+		"nice":    true,
+		"nohup":   true,
+		"command": true,
+		"builtin": true,
+		"which":   true,
+		"type":    true,
+	}
 
-					if !localFuncs[cmd] && !strings.HasPrefix(cmd, "-") {
-						commands[cmd] = append(commands[cmd], PosInfo{
-							line: x.Pos().Line(),
-							col:  x.Pos().Col(),
-							len:  uint(len(cmd)),
+	syntax.Walk(file, func(node syntax.Node) bool {
+		switch x := node.(type) {
+		case *syntax.TimeClause:
+			commands["time"] = append(commands["time"], PosInfo{
+				line: x.Time.Line(),
+				col:  x.Time.Col(),
+				len:  uint(len("time")),
+			})
+		case *syntax.CallExpr:
+			if len(x.Args) > 0 {
+				var handleArgs func(parentCmd string, args []*syntax.Word)
+				handleArgs = func(parentCmd string, args []*syntax.Word) {
+					skipNext := false
+					for i, arg := range args {
+						if skipNext {
+							skipNext = false
+							continue
+						}
+
+						cmd := wordToString(arg)
+						if strings.HasPrefix(cmd, "-") {
+							if isFlagWithArg(parentCmd, cmd) {
+								skipNext = true
+							}
+							continue
+						}
+
+						if cmd != "" && !localFuncs[cmd] {
+							// Use original source text for accurate length and representation
+							rawCmd := getNodeText(arg, source)
+							commands[rawCmd] = append(commands[rawCmd], PosInfo{
+								line: arg.Pos().Line(),
+								col:  arg.Pos().Col(),
+								len:  uint(len(rawCmd)),
+							})
+
+							if wrappers[cmd] && i+1 < len(args) {
+								handleArgs(cmd, args[i+1:])
+							}
+						}
+						break
+					}
+				}
+				// Initial call with empty parentCmd
+				handleArgs("", x.Args)
+			}
+		case *syntax.Assign:
+			if x.Value != nil {
+				val := wordToString(x.Value)
+
+				// Track the variable name being defined
+				if x.Name != nil {
+					name := x.Name.Value
+					commands["$"+name] = append(commands["$"+name], PosInfo{
+						line: x.Name.Pos().Line(),
+						col:  x.Name.Pos().Col(),
+						len:  uint(len(name)),
+					})
+				}
+
+				// Track variable assignment values if they look like potential commands.
+				if val != "" && !strings.Contains(val, " ") && !strings.HasPrefix(val, "-") && !strings.HasPrefix(val, "/") && !strings.HasPrefix(val, "./") {
+					if !localFuncs[val] {
+						rawVal := getNodeText(x.Value, source)
+						commands[rawVal] = append(commands[rawVal], PosInfo{
+							line: x.Value.Pos().Line(),
+							col:  x.Value.Pos().Col(),
+							len:  uint(len(rawVal)),
 						})
 					}
 				}
@@ -90,13 +161,68 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool) map[string][
 	return commands
 }
 
+func getNodeText(node syntax.Node, source []byte) string {
+	start := node.Pos().Offset()
+	end := node.End().Offset()
+	if start >= uint(len(source)) || end > uint(len(source)) || start >= end {
+		return ""
+	}
+	return string(source[start:end])
+}
+
+func isFlagWithArg(cmd, flag string) bool {
+	if !strings.HasPrefix(flag, "-") || strings.Contains(flag, "=") {
+		return false
+	}
+	f := strings.TrimLeft(flag, "-")
+	if len(f) > 1 {
+		// Long flags or combined short flags.
+		// For simplicity, we only handle common single-letter flags that take args.
+		return false
+	}
+
+	switch cmd {
+	case "sudo":
+		return strings.ContainsAny(f, "ugprUTRD C")
+	case "xargs":
+		return strings.ContainsAny(f, "EelInLPps")
+	}
+	return false
+}
+
+func wordToString(w *syntax.Word) string {
+	var sb strings.Builder
+	for _, part := range w.Parts {
+		switch p := part.(type) {
+		case *syntax.Lit:
+			sb.WriteString(p.Value)
+		case *syntax.ParamExp:
+			sb.WriteString("$")
+			sb.WriteString(p.Param.Value)
+		case *syntax.SglQuoted:
+			sb.WriteString(p.Value)
+		case *syntax.DblQuoted:
+			for _, qp := range p.Parts {
+				switch q := qp.(type) {
+				case *syntax.Lit:
+					sb.WriteString(q.Value)
+				case *syntax.ParamExp:
+					sb.WriteString("$")
+					sb.WriteString(q.Param.Value)
+				}
+			}
+		}
+	}
+	return sb.String()
+}
+
 // Do analyzes the given shell script reader and returns a map of command names to their positions.
 func Do(r io.Reader) (map[string][]PosInfo, error) {
 	content, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	return analyzeShellCode(string(content))
+	return analyzeShellCode(content)
 }
 
 func isShellFile(path string) bool {
