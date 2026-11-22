@@ -23,6 +23,7 @@ type CLIConfig struct {
 	depextify.Config       `yaml:",inline"`
 	depextify.FormatConfig `yaml:",inline"`
 
+	Hints bool     `yaml:"hints"`
 	Allow []string `yaml:"allow"`
 	Deny  []string `yaml:"deny"`
 
@@ -86,6 +87,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs.BoolVar(&cfg.ShowPos, "pos", cfg.ShowPos, "show file position and full line for each command")
 	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories")
 	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
+	fs.BoolVar(&cfg.Hints, "hints", cfg.Hints, "print notes on stderr about commands whose versions or variants differ between systems")
 
 	// pair defines -name and -no-name on p; -name stores the negated value when neg is set.
 	// The description is placed on -no-name.
@@ -121,6 +123,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -pos\n    \t%s\n", u("pos"))
 		fmt.Fprintf(os.Stderr, "  -hidden\n    \t%s\n", u("hidden"))
 		fmt.Fprintf(os.Stderr, "  -aggregate\n    \t%s\n", u("aggregate"))
+		fmt.Fprintf(os.Stderr, "  -hints\n    \t%s\n", u("hints"))
 		fmt.Fprintf(os.Stderr, "  -[no-]builtin\n    \t%s\n", u("no-builtin"))
 		fmt.Fprintf(os.Stderr, "  -[no-]coreutils\n    \t%s\n", u("no-coreutils"))
 		fmt.Fprintf(os.Stderr, "  -[no-]common\n    \t%s\n", u("no-common"))
