@@ -43,6 +43,8 @@ depextify [options] <file|directory>
 
 By default, it recursively scans directories and filters out shell built-ins, GNU coreutils, and common tools (like `grep`, `sed`, `awk`) to show meaningful external dependencies.
 
+A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc` (likewise `CC = gcc` and `$(CC)` in a Makefile, `ARG`/`ENV` in a Dockerfile, and `env:` in YAML). When no assigned value is known, as with `$1` or a variable from the environment, it is reported as `$NAME`. Assignments to variables that are never run as commands are not reported.
+
 ### Options
 
 - `-count`: Show the number of occurrences for each command.
@@ -143,10 +145,6 @@ examples/sample.sh
 ```sh
 $ depextify -format=markdown -aggregate examples
 - `examples`
-  - `$FILE_COUNT`
-  - `$NOW`
-  - `$RESPONSE`
-  - `$TARGET_DIR`
   - `apk`
   - `go`
   - `jq`
@@ -190,11 +188,11 @@ Here `notify-send` is provided by the `libnotify` package, so that line needs ed
 
 ```sh
 $ depextify -i examples
-$FILE_COUNT (1 use): [k]eep, [i]gnore, [q]uit? i
-$NOW (1 use): [k]eep, [i]gnore, [q]uit? i
-...
+apk (1 use): [k]eep, [i]gnore, [q]uit? i
+go (3 uses): [k]eep, [i]gnore, [q]uit? k
+jq (1 use): [k]eep, [i]gnore, [q]uit? k
 notify-send (1 use): [k]eep, [i]gnore, [q]uit? k
-Added $FILE_COUNT, $NOW to the ignores in .depextify.yaml.
+Added apk to the ignores in .depextify.yaml.
 ```
 
 ### Look up the packages that provide the commands

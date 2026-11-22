@@ -34,11 +34,13 @@ func TestDo_Core(t *testing.T) {
 			},
 		},
 		{
-			name:    "variable expansion as command",
-			content: "$EXE arg1\n${CMD_PATH} arg2",
+			name:    "variable of unknown value run as command",
+			content: "$EXE arg1\n${CMD_PATH} arg2\n\"$1\" x\ncmd=$2\n$cmd y",
 			expected: map[string][]PosInfo{
-				"$EXE":        {{line: 1, col: 1, len: 4}},
-				"${CMD_PATH}": {{line: 2, col: 1, len: 11}},
+				"$EXE":      {{line: 1, col: 1, len: 4}},
+				"$CMD_PATH": {{line: 2, col: 1, len: 11}},
+				"$1":        {{line: 3, col: 1, len: 4}},
+				"$cmd":      {{line: 5, col: 1, len: 4}},
 			},
 		},
 		{
@@ -73,11 +75,18 @@ func TestDo_Core(t *testing.T) {
 			},
 		},
 		{
-			name:    "variable assignment and usage",
-			content: "CC=gcc\n$CC main.c",
+			name:    "variable run as command reports its assigned value",
+			content: "CC=gcc\n$CC main.c\nCC=\"clang\"\n\"${CC}\" x.c",
 			expected: map[string][]PosInfo{
-				"gcc": {{line: 1, col: 4, len: 3}},
-				"$CC": {{line: 1, col: 1, len: 2}, {line: 2, col: 1, len: 3}},
+				"gcc":   {{line: 1, col: 4, len: 3}},
+				"clang": {{line: 3, col: 4, len: 7}},
+			},
+		},
+		{
+			name:    "assignments not run as commands are not reported",
+			content: "ret=0\nLC_ALL=C tr a b\nremote=\"$1\"\npublish=next",
+			expected: map[string][]PosInfo{
+				"tr": {{line: 2, col: 10, len: 2}},
 			},
 		},
 		{

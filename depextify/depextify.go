@@ -49,6 +49,9 @@ var (
 	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`)
 	reShebang  = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
 
+	// reVarRun matches a command word that is a single variable expansion, such as $CC or "${CC}".
+	reVarRun = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*|[0-9]+)$`)
+
 	// wrappers take another command as an argument.
 	wrappers = set("sudo", "xargs", "time", "exec", "nice", "nohup", "command", "builtin", "which", "type")
 )
@@ -72,14 +75,14 @@ func addPos(m map[string][]PosInfo, key string, pos syntax.Pos, n int) {
 
 // looksLikeCommand reports whether an assigned value may name a command, such as CC=gcc.
 func looksLikeCommand(v string) bool {
-	return v != "" && !strings.Contains(v, " ") && !strings.HasPrefix(v, "-") && !strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "./")
+	return v != "" && !strings.ContainsAny(v, " $") && !strings.HasPrefix(v, "-") && !strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "./")
 }
 
 // collectCommands() collects command names from various nodes with filtering:
 // - not local functions
 // - not starting with '-'
-func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byte) map[string][]PosInfo {
-	commands := make(map[string][]PosInfo)
+func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byte) found {
+	f := newFound()
 
 	// addCall records the first non-flag word of args, and recurses into the arguments of wrappers such as sudo.
 	var addCall func(parentCmd string, args []*syntax.Word)
@@ -100,7 +103,11 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byt
 			if cmd != "" && !localFuncs[cmd] {
 				// Use original source text for accurate length and representation
 				rawCmd := getNodeText(arg, source)
-				addPos(commands, rawCmd, arg.Pos(), len(rawCmd))
+				if m := reVarRun.FindStringSubmatch(cmd); m != nil {
+					addPos(f.runs, m[1], arg.Pos(), len(rawCmd))
+				} else {
+					addPos(f.cmds, rawCmd, arg.Pos(), len(rawCmd))
+				}
 				if wrappers[cmd] {
 					addCall(cmd, args[i+1:])
 				}
@@ -112,24 +119,20 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byt
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch x := node.(type) {
 		case *syntax.TimeClause:
-			addPos(commands, "time", x.Time, len("time"))
+			addPos(f.cmds, "time", x.Time, len("time"))
 		case *syntax.CallExpr:
 			addCall("", x.Args)
 		case *syntax.Assign:
-			if x.Value != nil {
-				if x.Name != nil {
-					addPos(commands, "$"+x.Name.Value, x.Name.Pos(), len(x.Name.Value))
-				}
+			if x.Name != nil && x.Value != nil {
 				if val := wordToString(x.Value); looksLikeCommand(val) && !localFuncs[val] {
-					rawVal := getNodeText(x.Value, source)
-					addPos(commands, rawVal, x.Value.Pos(), len(rawVal))
+					addPos(f.assigns, x.Name.Value+"="+val, x.Value.Pos(), len(getNodeText(x.Value, source)))
 				}
 			}
 		}
 		return true
 	})
 
-	return commands
+	return f
 }
 
 func getNodeText(node syntax.Node, source []byte) string {
@@ -188,7 +191,7 @@ func Do(r io.Reader) (map[string][]PosInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return analyzeShellCode(content)
+	return (&ShellExtractor{}).Extract(content)
 }
 
 func isShellFile(path string) bool {
