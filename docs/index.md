@@ -54,6 +54,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-gitignore-aware` | Respect `.gitignore` files in directories. | `true` |
 | `-no-gitignore-aware` | Ignore `.gitignore` files. | `false` |
 | `-ignores` | Comma-separated list of additional commands to ignore. | `""` |
+| `-query` | Comma-separated list of commands to find. Only they are reported, even if an ignore rule covers them. | `""` |
 | `-list` | List ignored commands in specified categories and exit. | `""` |
 | `-lexer` | Specify the chroma lexer for highlighting. | `bash` |
 | `-style` | Specify the chroma style for highlighting. | `monokai` |

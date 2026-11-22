@@ -54,6 +54,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-[no-]color`: Enable/disable colored output (default: auto).
 - `-[no-]gitignore-aware`: Enable/disable respect for `.gitignore` files (default: enabled).
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
+- `-query=cmd1,cmd2,...`: Report only these commands, to find the files (and, with `-pos`, the lines) that use them. The ignore rules do not apply to queried commands.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
@@ -107,6 +108,20 @@ jq: 1
   24:  echo "$RESPONSE" | jq '.status'
 notify-send: 1
   28:  notify-send "Task Finished" "Backup check complete"
+```
+
+### Find the files that use a command
+
+```sh
+$ depextify -query=jq,curl -pos examples
+examples/Makefile
+  curl:
+    13:  curl -X POST https://example.com/deploy
+examples/sample.sh
+  curl:
+    25:  RESPONSE=$(curl -s https://api.example.invalid/status)
+  jq:
+    26:  echo "$RESPONSE" | jq '.status'
 ```
 
 ### Include coreutils and common tools

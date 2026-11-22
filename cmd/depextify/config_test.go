@@ -96,6 +96,12 @@ excludes: [vendor/]
 		require.Equal(t, []string{"vendor/"}, cfg.Excludes)
 	})
 
+	t.Run("query", func(t *testing.T) {
+		cfg, err := parseFlags([]string{"-query=grep,jq", "target.sh"})
+		require.NoError(t, err)
+		require.Equal(t, []string{"grep", "jq"}, cfg.Query)
+	})
+
 	t.Run("list flag conflicts", func(t *testing.T) {
 		_, err := parseFlags([]string{"-list=all", "target.sh"})
 		require.Error(t, err)
