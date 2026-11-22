@@ -43,13 +43,13 @@ depextify [options] <file|directory>
 
 By default, it recursively scans directories and filters out shell built-ins, GNU coreutils, and common tools (like `grep`, `sed`, `awk`) to show meaningful external dependencies.
 
-A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc` (likewise `CC = gcc` and `$(CC)` in a Makefile, `ARG`/`ENV` in a Dockerfile, and `env:` in YAML). When no assigned value is known, as with `$1` or a variable from the environment, it is reported as `$NAME`. Assignments to variables that are never run as commands are not reported.
+A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc` (likewise `CC = gcc` and `$(CC)` in a Makefile, `ARG`/`ENV` in a Dockerfile, and `env:` in YAML). Commands whose names are not known statically, such as `$1`, a variable set by the environment, or `"$DIR/run.sh"`, are not reported, and neither are assignments to variables that are never run as commands. Quotes and escapes are removed from command names, so `"jq"`, `'jq'` and `\jq` are all reported as `jq`.
 
 ### Options
 
 - `-count`: Show the number of occurrences for each command.
 - `-pos`: Show the file position (line number) and the full line where each command is used.
-- `-hidden`: Scan hidden files and directories (default: ignore).
+- `-hidden`: Scan hidden files and directories (default: ignore). `.git` is never scanned.
 - `-aggregate`: Aggregate results across all scanned files instead of reporting per file.
 - `-hints`: Print notes on stderr about commands whose versions or variants differ between systems, such as `python` (Python 2 or 3) or `sed` (GNU or BSD). Hidden commands are checked too, since most of these are coreutils or common tools.
 - `-[no-]builtin`: Ignore/include shell built-in commands (default: ignore).
@@ -62,7 +62,7 @@ A command run through a variable is reported by the value assigned to that varia
 - `-query=cmd1,cmd2,...`: Report only these commands, to find the files (and, with `-pos`, the lines) that use them. The ignore rules do not apply to queried commands.
 - `-deny=cmd1,cmd2,...`: Fail (exit status 1) when any of these commands is used, even if an ignore rule hides it, printing each use as `file:line` on stderr.
 - `-allow=cmd1,cmd2,...`: Fail (exit status 1) when a reported command is not in this list, printing each use as `file:line` on stderr.
-- `-generate=<brew|apt|nix>`: Print an installation template for the reported commands instead of the result: a Brewfile, an `apt-get install` command, or a Nix `mkShell` expression. Package names are assumed to equal command names, so check them; variables and paths are left out.
+- `-generate=<brew|apt|nix>`: Print an installation template for the reported commands instead of the result: a Brewfile, an `apt-get install` command, or a Nix `mkShell` expression. Package names are assumed to equal command names, so check them; paths are left out.
 - `-lookup` (experimental): Print the packages that provide each reported command instead of the result, using the first installed tool of `nix-locate` (needs a `nix-index` database), `apt-file`, `pacman` (needs `pacman -Fy`) and `dnf`.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).

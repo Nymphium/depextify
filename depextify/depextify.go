@@ -49,9 +49,6 @@ var (
 	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`)
 	reShebang  = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
 
-	// reVarRun matches a command word that is a single variable expansion, such as $CC or "${CC}".
-	reVarRun = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*|[0-9]+)$`)
-
 	// wrappers take another command as an argument.
 	wrappers = set("sudo", "xargs", "time", "exec", "nice", "nohup", "command", "builtin", "which", "type")
 )
@@ -100,14 +97,12 @@ func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byt
 				continue
 			}
 
-			if cmd != "" && !localFuncs[cmd] {
-				// Use original source text for accurate length and representation
-				rawCmd := getNodeText(arg, source)
-				if m := reVarRun.FindStringSubmatch(cmd); m != nil {
-					addPos(f.runs, m[1], arg.Pos(), len(rawCmd))
-				} else {
-					addPos(f.cmds, rawCmd, arg.Pos(), len(rawCmd))
-				}
+			// The length is that of the source text, which the highlight covers.
+			n := len(getNodeText(arg, source))
+			if name, ok := runVar(arg); ok {
+				addPos(f.runs, name, arg.Pos(), n)
+			} else if cmd != "" && !localFuncs[cmd] && !isDynamic(arg) {
+				addPos(f.cmds, cmd, arg.Pos(), n)
 				if wrappers[cmd] {
 					addCall(cmd, args[i+1:])
 				}
@@ -164,23 +159,64 @@ func isFlagWithArg(cmd, flag string) bool {
 	return false
 }
 
+// runVar returns the name of the variable when w is a single expansion of it, such as $CC or "${CC}".
+func runVar(w *syntax.Word) (string, bool) {
+	parts := w.Parts
+	if len(parts) == 1 {
+		if dq, ok := parts[0].(*syntax.DblQuoted); ok {
+			parts = dq.Parts
+		}
+	}
+	if len(parts) != 1 {
+		return "", false
+	}
+	pe, ok := parts[0].(*syntax.ParamExp)
+	if !ok || pe.Param == nil {
+		return "", false
+	}
+	return pe.Param.Value, true
+}
+
+// isDynamic reports whether w contains an expansion, so that its value is not known statically.
+func isDynamic(w *syntax.Word) bool {
+	dynamic := false
+	syntax.Walk(w, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.ParamExp, *syntax.CmdSubst, *syntax.ArithmExp, *syntax.ProcSubst:
+			dynamic = true
+		}
+		return !dynamic
+	})
+	return dynamic
+}
+
+// wordToString returns w as the shell would read it, without quotes and escapes; expansions become "$NAME".
 func wordToString(w *syntax.Word) string {
 	var sb strings.Builder
-	writeParts(&sb, w.Parts)
+	writeParts(&sb, w.Parts, false)
 	return sb.String()
 }
 
-func writeParts(sb *strings.Builder, parts []syntax.WordPart) {
+func writeParts(sb *strings.Builder, parts []syntax.WordPart, quoted bool) {
 	for _, part := range parts {
 		switch p := part.(type) {
 		case *syntax.Lit:
-			sb.WriteString(p.Value)
+			if quoted {
+				sb.WriteString(p.Value)
+				continue
+			}
+			for i := 0; i < len(p.Value); i++ {
+				if p.Value[i] == '\\' && i+1 < len(p.Value) {
+					i++
+				}
+				sb.WriteByte(p.Value[i])
+			}
 		case *syntax.SglQuoted:
 			sb.WriteString(p.Value)
 		case *syntax.ParamExp:
 			sb.WriteString("$" + p.Param.Value)
 		case *syntax.DblQuoted:
-			writeParts(sb, p.Parts)
+			writeParts(sb, p.Parts, true)
 		}
 	}
 }
@@ -395,7 +431,8 @@ func (c *Config) walkRecursive(root, path string, res ScanResult, visited map[st
 
 	for _, d := range entries {
 		name := d.Name()
-		if !c.ShowHidden && name[0] == '.' {
+		// .git holds Git's own files, such as sample hooks, even when hidden files are scanned.
+		if name == ".git" || (!c.ShowHidden && name[0] == '.') {
 			continue
 		}
 

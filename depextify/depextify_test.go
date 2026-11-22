@@ -34,13 +34,20 @@ func TestDo_Core(t *testing.T) {
 			},
 		},
 		{
-			name:    "variable of unknown value run as command",
-			content: "$EXE arg1\n${CMD_PATH} arg2\n\"$1\" x\ncmd=$2\n$cmd y",
+			name:     "commands whose names are not known statically are not reported",
+			content:  "$EXE arg1\n${CMD_PATH} arg2\n\"$1\" x\ncmd=$2\n$cmd y\nexec \"$GIT_DIR/hooks/pre-commit\"\nsudo $CMD",
+			expected: map[string][]PosInfo{"exec": {{line: 6, col: 1, len: 4}}, "sudo": {{line: 7, col: 1, len: 4}}},
+		},
+		{
+			name:    "quotes and escapes are removed from command names",
+			content: "\"jq\" .\n'yq' .\n\\rm -f x\nsudo \"ls\"\n$(dirname \"$0\")/run.sh",
 			expected: map[string][]PosInfo{
-				"$EXE":      {{line: 1, col: 1, len: 4}},
-				"$CMD_PATH": {{line: 2, col: 1, len: 11}},
-				"$1":        {{line: 3, col: 1, len: 4}},
-				"$cmd":      {{line: 5, col: 1, len: 4}},
+				"jq":      {{line: 1, col: 1, len: 4}},
+				"yq":      {{line: 2, col: 1, len: 4}},
+				"rm":      {{line: 3, col: 1, len: 3}},
+				"sudo":    {{line: 4, col: 1, len: 4}},
+				"ls":      {{line: 4, col: 6, len: 4}},
+				"dirname": {{line: 5, col: 3, len: 7}},
 			},
 		},
 		{
@@ -294,6 +301,21 @@ func TestScan(t *testing.T) {
 		res, err := config.Scan(dir)
 		require.NoError(t, err)
 		require.Equal(t, ScanResult{a: {"grep": {{Line: 1, Col: 1, Len: 4, FullLine: "grep x"}}}}, res)
+	})
+
+	t.Run("hidden scans hidden directories but not .git", func(t *testing.T) {
+		dir := t.TempDir()
+		hook := filepath.Join(dir, ".git", "hooks", "h.sh")
+		hidden := filepath.Join(dir, ".hidden", "x.sh")
+		for _, path := range []string{hook, hidden} {
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+			require.NoError(t, os.WriteFile(path, []byte("jq ."), 0600))
+		}
+
+		res, err := (&Config{ShowHidden: true}).Scan(dir)
+		require.NoError(t, err)
+		require.Contains(t, res, hidden)
+		require.NotContains(t, res, hook)
 	})
 
 	t.Run("gitignore aware", func(t *testing.T) {

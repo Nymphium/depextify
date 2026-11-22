@@ -41,7 +41,7 @@ type (
 
 // found is what an extractor collects from a file before variables are resolved.
 type found struct {
-	cmds    map[string][]PosInfo // commands named in the source, keyed by their source text
+	cmds    map[string][]PosInfo // commands named in the source, keyed by their names without quotes and escapes
 	runs    map[string][]PosInfo // variables run as commands ($CC main.c), keyed by variable name
 	assigns map[string][]PosInfo // command-like values assigned to variables, keyed by "NAME=value", at the value
 }
@@ -64,24 +64,19 @@ func (f found) merge(src found, shift func(PosInfo) (PosInfo, bool)) {
 }
 
 // resolve returns the commands of f, with each variable run as a command replaced by the values assigned to it
-// in the same file, or reported as "$NAME" when no assigned value names a command.
-// Assignments to variables that are never run are dropped.
+// in the same file. A variable with no assigned value naming a command, and assignments to variables that are
+// never run, are dropped.
 func (f found) resolve() map[string][]PosInfo {
 	res := make(map[string][]PosInfo, len(f.cmds))
 	for cmd, infos := range f.cmds {
 		res[cmd] = slices.Clone(infos)
 	}
 	// ponytail: scans every assignment per run variable; index assignments by name if files get huge.
-	for name, runs := range f.runs {
-		resolved := false
+	for name := range f.runs {
 		for key, infos := range f.assigns {
 			if n, val, _ := strings.Cut(key, "="); n == name {
 				res[val] = append(res[val], infos...)
-				resolved = true
 			}
-		}
-		if !resolved {
-			res["$"+name] = append(res["$"+name], runs...)
 		}
 	}
 	for _, infos := range res {
@@ -133,10 +128,14 @@ func addInLine(results map[string][]PosInfo, key, text, line string, lineNum int
 	}
 }
 
-// addAssign records an assignment name=val found in line when val looks like a command.
+// addAssign records an assignment name=val found in line when val, without enclosing quotes, looks like a command.
 func addAssign(results found, line string, lineNum int, name, val string) {
-	if name != "" && looksLikeCommand(val) {
-		addInLine(results.assigns, name+"="+val, val, line, lineNum)
+	unquoted := val
+	if len(val) >= 2 && (val[0] == '"' || val[0] == '\'') && val[len(val)-1] == val[0] {
+		unquoted = val[1 : len(val)-1]
+	}
+	if name != "" && looksLikeCommand(unquoted) {
+		addInLine(results.assigns, name+"="+unquoted, val, line, lineNum)
 	}
 }
 
