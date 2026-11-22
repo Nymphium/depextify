@@ -107,7 +107,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		}
 	}
 	fs.Func("query", "comma-separated list of commands to find; only they are reported, even if ignored", appendTo(&cfg.Query))
-	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml)")
+	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml, markdown)")
 
 	fs.Usage = func() {
 		u := func(name string) string { return fs.Lookup(name).Usage }
@@ -162,6 +162,10 @@ func parseFlags(args []string) (*CLIConfig, error) {
 		}
 		positional = append(positional, fs.Arg(0))
 		args = fs.Args()[1:]
+	}
+
+	if !slices.Contains([]string{"", "text", "json", "yaml", "markdown"}, cfg.Format) {
+		return nil, fmt.Errorf("unknown format %q (text, json, yaml, markdown)", cfg.Format)
 	}
 
 	if envStyle := os.Getenv("DEPEXTIFY_STYLE"); envStyle != "" {

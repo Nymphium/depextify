@@ -15,7 +15,7 @@
 - **Detailed Reporting**: Show occurrences, line numbers, and even the full line where each command is used.
 - **Result Aggregation**: Summarize findings across the entire project with a single command.
 - **Syntax Highlighting**: Beautifully highlighted output using [chroma](https://github.com/alecthomas/chroma).
-- **Multiple Formats**: Export results as Text, JSON, or YAML.
+- **Multiple Formats**: Export results as Text, JSON, YAML, or Markdown.
 - **Configurable**: Project-specific settings via `.depextify.yaml`.
 
 ## Installation
@@ -58,7 +58,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
-- `-format <type>`: Specify output format (`text`, `json`, `yaml`). Default: `text`.
+- `-format <type>`: Specify output format (`text`, `json`, `yaml`, `markdown`). Default: `text`. `markdown` prints nested lists that can be pasted into a README as a dependency list.
 
 ## Configuration
 
@@ -122,6 +122,21 @@ examples/sample.sh
     25:  RESPONSE=$(curl -s https://api.example.invalid/status)
   jq:
     26:  echo "$RESPONSE" | jq '.status'
+```
+
+### Write a dependency list for a README
+
+```sh
+$ depextify -format=markdown -aggregate examples
+- `examples`
+  - `$FILE_COUNT`
+  - `$NOW`
+  - `$RESPONSE`
+  - `$TARGET_DIR`
+  - `apk`
+  - `go`
+  - `jq`
+  - `notify-send`
 ```
 
 ### Include coreutils and common tools

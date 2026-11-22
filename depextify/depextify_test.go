@@ -145,6 +145,36 @@ func TestResult_Format(t *testing.T) {
 	})
 }
 
+func TestResult_Markdown(t *testing.T) {
+	res := ScanResult{
+		"a.sh": {
+			"ls":   {{Line: 7, Col: 1, Len: 2, FullLine: "ls -a"}, {Line: 10, Col: 3, Len: 2, FullLine: "  ls -l"}},
+			"date": {{Line: 3, Col: 7, Len: 4, FullLine: "echo `date`"}},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		cfg      FormatConfig
+		expected string
+	}{
+		{"file", FormatConfig{}, "- `date`\n- `ls`\n"},
+		{"-count", FormatConfig{ShowCount: true}, "- `date`: 1\n- `ls`: 2\n"},
+		{
+			"-pos on directory",
+			FormatConfig{ShowPos: true, IsDirectory: true},
+			"- `a.sh`\n  - `date`\n    - 3: `` echo `date` ``\n  - `ls`\n    - 7: `ls -a`\n    - 10: `ls -l`\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := (&MarkdownFormatter{Config: &tt.cfg}).Format(res)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, out)
+		})
+	}
+}
+
 func TestResult_JSON(t *testing.T) {
 	res := ScanResult{
 		"a.sh": {

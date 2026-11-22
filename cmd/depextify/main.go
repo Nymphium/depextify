@@ -42,6 +42,8 @@ func main() {
 		formatter = &depextify.JSONFormatter{Config: &formatConfig}
 	case "yaml":
 		formatter = &depextify.YAMLFormatter{Config: &formatConfig}
+	case "markdown":
+		formatter = &depextify.MarkdownFormatter{Config: &formatConfig}
 	default:
 		formatter = &depextify.TextFormatter{Config: &formatConfig}
 	}

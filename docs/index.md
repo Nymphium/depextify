@@ -58,7 +58,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-list` | List ignored commands in specified categories and exit. | `""` |
 | `-lexer` | Specify the chroma lexer for highlighting. | `bash` |
 | `-style` | Specify the chroma style for highlighting. | `monokai` |
-| `-format` | Output format. Options: `text`, `json`, `yaml`. | `text` |
+| `-format` | Output format. Options: `text`, `json`, `yaml`, `markdown` (nested lists for pasting into documents). | `text` |
 
 ### Environment Variables
 
@@ -84,7 +84,7 @@ no_common: true     # If true, ignore common tools (grep, sed...)
 show_count: false   # Show occurrence counts
 show_pos: false     # Show file positions and source lines
 use_color: true     # Enable colored output
-format: text        # Output format: text, json, yaml
+format: text        # Output format: text, json, yaml, markdown
 
 # Scan behavior
 show_hidden: false  # Scan hidden files/directories

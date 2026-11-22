@@ -244,3 +244,50 @@ func (f *YAMLFormatter) Format(r ScanResult) (string, error) {
 	}
 	return string(b), nil
 }
+
+// MarkdownFormatter formats the result as nested Markdown lists, for pasting into documents.
+type MarkdownFormatter struct {
+	Config *FormatConfig
+}
+
+// Format returns the Markdown representation of the result.
+func (f *MarkdownFormatter) Format(r ScanResult) (string, error) {
+	c := f.Config
+	indent := ""
+	if c.IsDirectory {
+		indent = "  "
+	}
+
+	var sb strings.Builder
+	for _, path := range slices.Sorted(maps.Keys(r)) {
+		if c.IsDirectory {
+			fmt.Fprintf(&sb, "- %s\n", markdownCode(path))
+		}
+		for _, cmd := range slices.Sorted(maps.Keys(r[path])) {
+			occs := r[path][cmd]
+			fmt.Fprintf(&sb, "%s- %s", indent, markdownCode(cmd))
+			if c.ShowCount {
+				fmt.Fprintf(&sb, ": %d", len(occs))
+			}
+			sb.WriteString("\n")
+			if c.ShowPos {
+				for _, occ := range occs {
+					fmt.Fprintf(&sb, "%s  - %d: %s\n", indent, occ.Line, markdownCode(strings.TrimSpace(occ.FullLine)))
+				}
+			}
+		}
+	}
+	return sb.String(), nil
+}
+
+// markdownCode returns s as a Markdown code span, fenced by more backticks than any run inside s.
+func markdownCode(s string) string {
+	fence := "`"
+	for strings.Contains(s, fence) {
+		fence += "`"
+	}
+	if len(fence) > 1 {
+		return fence + " " + s + " " + fence
+	}
+	return fence + s + fence
+}
