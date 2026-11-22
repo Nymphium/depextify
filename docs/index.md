@@ -43,6 +43,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-pos` | Show file path, line number, and the source line for each occurrence. | `false` |
 | `-hidden` | Recursively scan hidden files and directories (e.g., `.git`, `.config`). | `false` |
 | `-aggregate` | Aggregate results across all files into a single report for the target. | `false` |
+| `-hints` | Print notes on stderr about commands whose versions or variants differ between systems (e.g., `python` 2 or 3, GNU or BSD `sed`), including commands hidden by the ignore rules. | `false` |
 | `-builtin` | Include shell built-in commands (e.g., `cd`, `echo`, `export`) in the output. | `false` |
 | `-coreutils` | Include GNU Coreutils commands (e.g., `ls`, `cp`, `mv`) in the output. | `false` |
 | `-common` | Include "common" tools (e.g., `grep`, `sed`, `awk`, `curl`, `git`) in the output. | `false` |
@@ -92,6 +93,7 @@ format: text        # Output format: text, json, yaml, markdown
 show_hidden: false  # Scan hidden files/directories
 gitignore_aware: true # Respect .gitignore files
 aggregate: false    # Aggregate results cross all files
+hints: false        # Print version/variant notes on stderr
 
 # Syntax highlighting
 lexer: bash         # Lexer to use for code snippets

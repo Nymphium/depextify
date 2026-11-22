@@ -49,6 +49,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-pos`: Show the file position (line number) and the full line where each command is used.
 - `-hidden`: Scan hidden files and directories (default: ignore).
 - `-aggregate`: Aggregate results across all scanned files instead of reporting per file.
+- `-hints`: Print notes on stderr about commands whose versions or variants differ between systems, such as `python` (Python 2 or 3) or `sed` (GNU or BSD). Hidden commands are checked too, since most of these are coreutils or common tools.
 - `-[no-]builtin`: Ignore/include shell built-in commands (default: ignore).
 - `-[no-]coreutils`: Ignore/include GNU coreutils in the output (default: ignore).
 - `-[no-]common`: Ignore/include common tools (grep, sed, awk, etc.) in the output (default: ignore).
@@ -78,6 +79,7 @@ show_pos: true
 use_color: true
 gitignore_aware: true
 aggregate: false
+hints: false
 lexer: bash
 style: monokai
 format: text

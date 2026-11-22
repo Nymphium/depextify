@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nymphium/depextify/depextify"
@@ -97,4 +98,14 @@ func TestRun_Policy(t *testing.T) {
 		require.Empty(t, stderr)
 		require.Equal(t, "a.sh\n  jq\n  yq\n\n", stdout)
 	})
+}
+
+func TestRun_Hints(t *testing.T) {
+	code, stdout, stderr := runIn(t, map[string]string{"a.sh": "python x.py\ngrep -P foo f\njq .\n"}, "-hints", "a.sh")
+	require.Equal(t, 0, code)
+	require.Equal(t, "jq\npython\n\n", stdout)
+	lines := strings.Split(strings.TrimSuffix(stderr, "\n"), "\n")
+	require.Len(t, lines, 2)
+	require.True(t, strings.HasPrefix(lines[0], "hint: grep: "), lines[0])
+	require.True(t, strings.HasPrefix(lines[1], "hint: python: "), lines[1])
 }

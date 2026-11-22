@@ -65,12 +65,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	_, _ = fmt.Fprintln(stdout, out)
 
-	if len(cfg.Allow) == 0 && len(cfg.Deny) == 0 {
+	if !cfg.Hints && len(cfg.Allow) == 0 && len(cfg.Deny) == 0 {
 		return 0
 	}
 	all, err := scanAll(cfg.Config, cfg.Target)
 	if err != nil {
 		return fail("Error: %v\n", err)
+	}
+	if cfg.Hints {
+		for _, cmd := range all.Commands() {
+			if hint := depextify.GetHint(cmd); hint != "" {
+				_, _ = fmt.Fprintf(stderr, "hint: %s: %s\n", cmd, hint)
+			}
+		}
 	}
 	msgs := violations(cfg, all)
 	for _, msg := range msgs {

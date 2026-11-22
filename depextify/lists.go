@@ -73,6 +73,41 @@ var common = set(
 	"more", "nano", "vim", "vi", "emacs",
 )
 
+// hints describe differences between versions or variants of a command that affect portability.
+var hints = func() map[string]string {
+	h := map[string]string{
+		"python":         "may run Python 2 or Python 3, or be missing, depending on the system; call python3 explicitly",
+		"python2":        "Python 2 is end-of-life and missing from most current systems",
+		"pip":            "may belong to Python 2 or Python 3; use python3 -m pip",
+		"awk":            "may be gawk, mawk or BSD awk depending on the system; gawk extensions are not portable",
+		"timeout":        "comes from GNU coreutils and is missing on macOS by default; Homebrew installs it as gtimeout",
+		"nc":             "netcat variants (OpenBSD, GNU, Nmap ncat) accept different options",
+		"docker-compose": "is the Compose V1 command, which is no longer maintained; Compose V2 runs as docker compose",
+		"which":          "is not specified by POSIX and its output differs between systems; command -v is portable",
+		"echo":           "handles -n, -e and backslashes differently between shells; printf is portable",
+	}
+	// GNU tools whose BSD (macOS) counterparts differ; Homebrew installs the GNU versions with a g prefix.
+	gnu := map[string]string{
+		"grep": "", "find": "", "xargs": "", "readlink": "", "tar": "",
+		"sed":  ", for example in sed -i",
+		"date": ", for example in parsing dates (-d and -j -f)",
+		"stat": ", for example in format options (-c and -f)",
+	}
+	for cmd, example := range gnu {
+		h[cmd] = "GNU and BSD (macOS) versions accept different options" + example + "; Homebrew installs the GNU version as g" + cmd
+	}
+	gnu["timeout"] = ""
+	for cmd := range gnu {
+		h["g"+cmd] = "is Homebrew's name for GNU " + cmd + "; GNU/Linux systems call it " + cmd
+	}
+	return h
+}()
+
+// GetHint returns a note on how versions or variants of cmd differ between systems, or "" when there is none.
+func GetHint(cmd string) string {
+	return hints[cmd]
+}
+
 // GetBuiltins returns a sorted list of shell built-in commands.
 func GetBuiltins() []string {
 	return slices.Sorted(maps.Keys(builtins))
