@@ -96,6 +96,11 @@ excludes: [vendor/]
 		require.Equal(t, []string{"vendor/"}, cfg.Excludes)
 	})
 
+	t.Run("unknown format", func(t *testing.T) {
+		_, err := parseFlags([]string{"-format=html", "target.sh"})
+		require.ErrorContains(t, err, `unknown format "html"`)
+	})
+
 	t.Run("query", func(t *testing.T) {
 		cfg, err := parseFlags([]string{"-query=grep,jq", "target.sh"})
 		require.NoError(t, err)
