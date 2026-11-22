@@ -108,6 +108,12 @@ func TestExtractors(t *testing.T) {
 	})
 }
 
+func TestYAMLExtractorCountsCmdMappingOnce(t *testing.T) {
+	res, err := (&YAMLExtractor{}).Extract([]byte("tasks:\n  build:\n    cmds:\n      - cmd: mytool x\n"))
+	require.NoError(t, err)
+	require.Equal(t, []PosInfo{{line: 4, col: 14, len: 6}}, res["mytool"])
+}
+
 func TestGetExtractor(t *testing.T) {
 	tests := []struct {
 		path     string

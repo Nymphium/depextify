@@ -2,64 +2,57 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/nymphium/depextify/depextify"
 	"gopkg.in/yaml.v3"
 )
 
+var errNoTarget = errors.New("no target specified")
+
+// CLIConfig is the configuration merged from .depextify.yaml and the command-line flags.
 type CLIConfig struct {
-	ShowCount       bool     `yaml:"show_count"`
-	ShowPos         bool     `yaml:"show_pos"`
-	ShowHidden      bool     `yaml:"show_hidden"`
-	IgnoreBuiltins  bool     `yaml:"no_builtins"`
-	IgnoreCoreutils bool     `yaml:"no_coreutils"`
-	IgnoreCommon    bool     `yaml:"no_common"`
-	UseColor        bool     `yaml:"use_color"`
-	GitignoreAware  bool     `yaml:"gitignore_aware"`
-	Aggregate       bool     `yaml:"aggregate"`
-	List            string   `yaml:"-"`
-	Lexer           string   `yaml:"lexer"`
-	Style           string   `yaml:"style"`
+	depextify.Config       `yaml:",inline"`
+	depextify.FormatConfig `yaml:",inline"`
 
-	IgnoresStr string   `yaml:"-"`
-	Ignores    []string `yaml:"ignores"`
-	Excludes   []string `yaml:"excludes"`
-
-	Target string `yaml:"-"`
-	Format string `yaml:"format"`
+	List       string `yaml:"-"`
+	IgnoresStr string `yaml:"-"`
+	Target     string `yaml:"-"`
+	Format     string `yaml:"format"`
 }
 
-// ToConfig converts CLIConfig to depextify.Config.
-func (cfg *CLIConfig) ToConfig() *depextify.Config {
-	return &depextify.Config{
-		NoBuiltins:     cfg.IgnoreBuiltins,
-		NoCoreutils:    cfg.IgnoreCoreutils,
-		NoCommon:       cfg.IgnoreCommon,
-		ShowHidden:     cfg.ShowHidden,
-		GitignoreAware: cfg.GitignoreAware,
-		Aggregate:      cfg.Aggregate,
-		ExtraIgnores:   cfg.Ignores,
-		Excludes:       cfg.Excludes,
+// boolFlag is a boolean flag that writes its value to p, negated when neg is set.
+// A -x / -no-x pair writes the same field, so the last one given wins.
+type boolFlag struct {
+	p   *bool
+	neg bool
+}
+
+func (b boolFlag) String() string {
+	if b.p == nil {
+		return "false"
 	}
+	return strconv.FormatBool(*b.p != b.neg)
 }
 
-// ToFormatConfig converts CLIConfig to depextify.FormatConfig.
-func (cfg *CLIConfig) ToFormatConfig(isDir bool) *depextify.FormatConfig {
-	return &depextify.FormatConfig{
-		ShowCount:   cfg.ShowCount,
-		ShowPos:     cfg.ShowPos,
-		UseColor:    cfg.UseColor,
-		LexerName:   cfg.Lexer,
-		StyleName:   cfg.Style,
-		IsDirectory: isDir,
+func (b boolFlag) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return errors.New("parse error") // same wording as flag.Bool
 	}
+	*b.p = v != b.neg
+	return nil
 }
+
+func (boolFlag) IsBoolFlag() bool { return true }
 
 func isTTY() bool {
 	fi, err := os.Stdout.Stat()
@@ -69,48 +62,43 @@ func isTTY() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
+// loadConfigFile reads .depextify.yaml from the current directory, or else from the home directory.
 func loadConfigFile(cfg *CLIConfig) {
-	// 1. Try .depextify.yaml in current directory
-	if f, err := os.Open(".depextify.yaml"); err == nil {
-		defer func() { _ = f.Close() }()
-		_ = yaml.NewDecoder(f).Decode(cfg)
-		return
-	}
-
-	// 2. Try home directory
+	paths := []string{".depextify.yaml"}
 	if home, err := os.UserHomeDir(); err == nil {
-		path := filepath.Join(home, ".depextify.yaml")
-		if f, err := os.Open(path); err == nil {
-			defer func() { _ = f.Close() }()
-			_ = yaml.NewDecoder(f).Decode(cfg)
+		paths = append(paths, filepath.Join(home, ".depextify.yaml"))
+	}
+	for _, path := range paths {
+		if content, err := os.ReadFile(path); err == nil {
+			_ = yaml.Unmarshal(content, cfg)
+			return
 		}
 	}
 }
 
-func setupFlagSet(cfg *CLIConfig) (*flag.FlagSet, *flagFlags) {
+func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs := flag.NewFlagSet("depextify", flag.ContinueOnError)
-	ff := &flagFlags{}
 
 	fs.BoolVar(&cfg.ShowCount, "count", cfg.ShowCount, "show appearance count for each command")
 	fs.BoolVar(&cfg.ShowPos, "pos", cfg.ShowPos, "show file position and full line for each command")
 	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories")
 	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
 
-	// Pointers for [no-] flags. Descriptions are placed in one of the pair.
-	ff.builtin = fs.Bool("builtin", false, "")
-	ff.noBuiltin = fs.Bool("no-builtin", true, "ignore/include shell built-in commands (default: true (ignore))")
-	ff.coreutils = fs.Bool("coreutils", false, "")
-	ff.noCoreutils = fs.Bool("no-coreutils", true, "ignore/include coreutils commands (default: true (ignore))")
-	ff.common = fs.Bool("common", false, "")
-	ff.noCommon = fs.Bool("no-common", true, "ignore/include common commands (grep, find, etc.) (default: true (ignore))")
-	ff.color = fs.Bool("color", true, "")
-	ff.noColor = fs.Bool("no-color", false, "enable/disable colored output (default: auto)")
-	ff.gitignore = fs.Bool("gitignore-aware", true, "")
-	ff.noGitignore = fs.Bool("no-gitignore-aware", false, "enable/disable gitignore awareness (default: true (enabled))")
+	// pair defines -name and -no-name on p; -name stores the negated value when neg is set.
+	// The description is placed on -no-name.
+	pair := func(name string, p *bool, neg bool, usage string) {
+		fs.Var(boolFlag{p: p, neg: neg}, name, "")
+		fs.Var(boolFlag{p: p, neg: !neg}, "no-"+name, usage)
+	}
+	pair("builtin", &cfg.NoBuiltins, true, "ignore/include shell built-in commands (default: true (ignore))")
+	pair("coreutils", &cfg.NoCoreutils, true, "ignore/include coreutils commands (default: true (ignore))")
+	pair("common", &cfg.NoCommon, true, "ignore/include common commands (grep, find, etc.) (default: true (ignore))")
+	pair("color", &cfg.UseColor, false, "enable/disable colored output (default: auto)")
+	pair("gitignore-aware", &cfg.GitignoreAware, false, "enable/disable gitignore awareness (default: true (enabled))")
 
 	fs.StringVar(&cfg.List, "list", "", "comma-separated list of categories to list (builtins, coreutils, common) or \"all\"")
-	fs.StringVar(&cfg.Lexer, "lexer", cfg.Lexer, "chroma lexer name")
-	fs.StringVar(&cfg.Style, "style", cfg.Style, "chroma style name (env: DEPEXTIFY_STYLE)")
+	fs.StringVar(&cfg.LexerName, "lexer", cfg.LexerName, "chroma lexer name")
+	fs.StringVar(&cfg.StyleName, "style", cfg.StyleName, "chroma style name (env: DEPEXTIFY_STYLE)")
 	fs.StringVar(&cfg.IgnoresStr, "ignores", "", "comma-separated list of commands to ignore")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml)")
 
@@ -132,84 +120,44 @@ func setupFlagSet(cfg *CLIConfig) (*flag.FlagSet, *flagFlags) {
 		fmt.Fprintf(os.Stderr, "  -style string\n    \t%s (default: %q)\n", u("style"), depextify.DefaultStyle)
 		fmt.Fprintf(os.Stderr, "  -format string\n    \t%s (default: \"text\")\n", u("format"))
 	}
-	return fs, ff
-}
-
-type flagFlags struct {
-	builtin     *bool
-	noBuiltin   *bool
-	coreutils   *bool
-	noCoreutils *bool
-	common      *bool
-	noCommon    *bool
-	color       *bool
-	noColor     *bool
-	gitignore   *bool
-	noGitignore *bool
+	return fs
 }
 
 func parseFlags(args []string) (*CLIConfig, error) {
 	cfg := &CLIConfig{
-		IgnoreBuiltins:  true,
-		IgnoreCoreutils: true,
-		IgnoreCommon:    true,
-		UseColor:        isTTY(),
-		GitignoreAware:  true,
-		Lexer:           depextify.DefaultLexer,
-		Style:           depextify.DefaultStyle,
-		Format:          "text",
+		Config: depextify.Config{
+			NoBuiltins:     true,
+			NoCoreutils:    true,
+			NoCommon:       true,
+			GitignoreAware: true,
+		},
+		FormatConfig: depextify.FormatConfig{
+			UseColor:  isTTY(),
+			LexerName: depextify.DefaultLexer,
+			StyleName: depextify.DefaultStyle,
+		},
+		Format: "text",
 	}
 
 	loadConfigFile(cfg)
 
-	fs, ff := setupFlagSet(cfg)
+	fs := setupFlagSet(cfg)
 
+	// flag stops at the first positional argument; resume after it so that flags may follow the target.
 	var positional []string
-	var flagArgs []string
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			flagArgs = append(flagArgs, arg)
-		} else {
-			positional = append(positional, arg)
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
 		}
-	}
-
-	if err := fs.Parse(flagArgs); err != nil {
-		return nil, err
-	}
-
-	// Honor the order of flags provided on CLI (last one wins)
-	for _, f := range flagArgs {
-		name := strings.TrimLeft(f, "-")
-		if idx := strings.Index(name, "="); idx != -1 {
-			name = name[:idx]
+		if fs.NArg() == 0 {
+			break
 		}
-		switch name {
-		case "builtin":
-			cfg.IgnoreBuiltins = !*ff.builtin
-		case "no-builtin":
-			cfg.IgnoreBuiltins = *ff.noBuiltin
-		case "coreutils":
-			cfg.IgnoreCoreutils = !*ff.coreutils
-		case "no-coreutils":
-			cfg.IgnoreCoreutils = *ff.noCoreutils
-		case "common":
-			cfg.IgnoreCommon = !*ff.common
-		case "no-common":
-			cfg.IgnoreCommon = *ff.noCommon
-		case "color":
-			cfg.UseColor = *ff.color
-		case "no-color":
-			cfg.UseColor = !*ff.noColor
-		case "gitignore-aware":
-			cfg.GitignoreAware = *ff.gitignore
-		case "no-gitignore-aware":
-			cfg.GitignoreAware = !*ff.noGitignore
-		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
 	}
 
 	if envStyle := os.Getenv("DEPEXTIFY_STYLE"); envStyle != "" {
-		cfg.Style = envStyle
+		cfg.StyleName = envStyle
 	}
 
 	if cfg.List != "" {
@@ -221,12 +169,12 @@ func parseFlags(args []string) (*CLIConfig, error) {
 
 	if len(positional) < 1 {
 		fs.Usage()
-		return nil, fmt.Errorf("no target specified")
+		return nil, errNoTarget
 	}
 
 	cfg.Target = positional[0]
 	if cfg.IgnoresStr != "" {
-		cfg.Ignores = append(cfg.Ignores, strings.Split(cfg.IgnoresStr, ",")...)
+		cfg.ExtraIgnores = append(cfg.ExtraIgnores, strings.Split(cfg.IgnoresStr, ",")...)
 	}
 
 	return cfg, nil
@@ -238,12 +186,8 @@ func printCategory(w io.Writer, name string, commands []string, useColor bool) {
 		header = "\033[36m" + name + "\033[0m" + ":"
 	}
 	_, _ = fmt.Fprintln(w, header)
-	for i := 0; i < len(commands); i += 5 {
-		end := i + 5
-		if end > len(commands) {
-			end = len(commands)
-		}
-		_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(commands[i:end], ", "))
+	for chunk := range slices.Chunk(commands, 5) {
+		_, _ = fmt.Fprintf(w, "  %s\n", strings.Join(chunk, ", "))
 	}
 	_, _ = fmt.Fprintln(w)
 }
