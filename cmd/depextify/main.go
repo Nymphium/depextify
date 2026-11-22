@@ -66,9 +66,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		formatter = &depextify.TextFormatter{Config: &formatConfig}
 	}
 
-	if cfg.Generate != "" {
+	switch {
+	case cfg.Lookup:
+		out, err := lookup(results.Commands())
+		if err != nil {
+			return fail("Error: %v\n", err)
+		}
+		_, _ = fmt.Fprint(stdout, out)
+	case cfg.Generate != "":
 		_, _ = fmt.Fprint(stdout, generate(cfg.Generate, results.Commands()))
-	} else {
+	default:
 		out, err := formatter.Format(results)
 		if err != nil {
 			return fail("Error formatting output: %v\n", err)

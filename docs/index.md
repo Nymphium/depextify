@@ -60,6 +60,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-deny` | Comma-separated list of commands that fail the run (exit status 1) when used, even if an ignore rule hides them. Each use is printed as `file:line` on stderr. | `""` |
 | `-allow` | Comma-separated list of the only commands allowed among the reported ones. Any other reported command fails the run (exit status 1). | `""` |
 | `-generate` | Print an installation template for the reported commands instead of the result: `brew` (Brewfile), `apt` (`apt-get install` command) or `nix` (`mkShell` expression). Package names are assumed to equal command names. | `""` |
+| `-lookup` | Experimental. Print the packages that provide each reported command instead of the result, using the first installed tool of `nix-locate` (needs a `nix-index` database), `apt-file`, `pacman` (needs `pacman -Fy`) and `dnf`. | `false` |
 | `-list` | List ignored commands in specified categories and exit. | `""` |
 | `-lexer` | Specify the chroma lexer for highlighting. | `bash` |
 | `-style` | Specify the chroma style for highlighting. | `monokai` |

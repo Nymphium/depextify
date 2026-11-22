@@ -61,6 +61,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-deny=cmd1,cmd2,...`: Fail (exit status 1) when any of these commands is used, even if an ignore rule hides it, printing each use as `file:line` on stderr.
 - `-allow=cmd1,cmd2,...`: Fail (exit status 1) when a reported command is not in this list, printing each use as `file:line` on stderr.
 - `-generate=<brew|apt|nix>`: Print an installation template for the reported commands instead of the result: a Brewfile, an `apt-get install` command, or a Nix `mkShell` expression. Package names are assumed to equal command names, so check them; variables and paths are left out.
+- `-lookup` (experimental): Print the packages that provide each reported command instead of the result, using the first installed tool of `nix-locate` (needs a `nix-index` database), `apt-file`, `pacman` (needs `pacman -Fy`) and `dnf`.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
@@ -194,6 +195,15 @@ $NOW (1 use): [k]eep, [i]gnore, [q]uit? i
 ...
 notify-send (1 use): [k]eep, [i]gnore, [q]uit? k
 Added $FILE_COUNT, $NOW to the ignores in .depextify.yaml.
+```
+
+### Look up the packages that provide the commands
+
+```sh
+$ depextify -lookup examples/sample.sh
+# Packages found with dnf
+jq: jq
+notify-send: libnotify
 ```
 
 ### Include coreutils and common tools
