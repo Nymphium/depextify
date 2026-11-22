@@ -55,6 +55,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-gitignore-aware` | Respect `.gitignore` files in directories. | `true` |
 | `-no-gitignore-aware` | Ignore `.gitignore` files. | `false` |
 | `-ignores` | Comma-separated list of additional commands to ignore. | `""` |
+| `-interactive`, `-i` | Ask, for each reported command, whether to keep or ignore it, and add the ignored ones to `ignores` in the loaded configuration file (or `./.depextify.yaml`). | `false` |
 | `-query` | Comma-separated list of commands to find. Only they are reported, even if an ignore rule covers them. | `""` |
 | `-deny` | Comma-separated list of commands that fail the run (exit status 1) when used, even if an ignore rule hides them. Each use is printed as `file:line` on stderr. | `""` |
 | `-allow` | Comma-separated list of the only commands allowed among the reported ones. Any other reported command fails the run (exit status 1). | `""` |
