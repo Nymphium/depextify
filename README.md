@@ -59,6 +59,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-query=cmd1,cmd2,...`: Report only these commands, to find the files (and, with `-pos`, the lines) that use them. The ignore rules do not apply to queried commands.
 - `-deny=cmd1,cmd2,...`: Fail (exit status 1) when any of these commands is used, even if an ignore rule hides it, printing each use as `file:line` on stderr.
 - `-allow=cmd1,cmd2,...`: Fail (exit status 1) when a reported command is not in this list, printing each use as `file:line` on stderr.
+- `-generate=<brew|apt|nix>`: Print an installation template for the reported commands instead of the result: a Brewfile, an `apt-get install` command, or a Nix `mkShell` expression. Package names are assumed to equal command names, so check them; variables and paths are left out.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
@@ -164,6 +165,24 @@ deploy.sh:1: command "sudo" is denied
 $ echo $?
 1
 ```
+
+### Generate an installation template
+
+```sh
+$ depextify -generate=nix examples
+# Package names are assumed to equal command names; check them before use.
+{ pkgs ? import <nixpkgs> { } }:
+pkgs.mkShell {
+  packages = [
+    pkgs.apk
+    pkgs.go
+    pkgs.jq
+    pkgs.notify-send
+  ];
+}
+```
+
+Here `notify-send` is provided by the `libnotify` package, so that line needs editing.
 
 ### Include coreutils and common tools
 
