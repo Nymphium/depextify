@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,5 +58,43 @@ func TestIntegration(t *testing.T) {
 		for _, e := range expected {
 			require.Contains(t, allCommands, e)
 		}
+	})
+}
+
+// runIn runs the CLI in a fresh directory whose empty .depextify.yaml keeps the user's home config out.
+func runIn(t *testing.T, files map[string]string, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("DEPEXTIFY_STYLE", "")
+	require.NoError(t, os.WriteFile(".depextify.yaml", nil, 0600))
+	for name, content := range files {
+		require.NoError(t, os.WriteFile(name, []byte(content), 0600))
+	}
+	var out, errOut bytes.Buffer
+	code = run(append([]string{"-no-color"}, args...), &out, &errOut)
+	return code, out.String(), errOut.String()
+}
+
+func TestRun_Policy(t *testing.T) {
+	files := map[string]string{"a.sh": "sudo ls\njq .\nyq .\n"}
+
+	t.Run("deny finds ignored commands", func(t *testing.T) {
+		code, _, stderr := runIn(t, files, "-deny=sudo", ".")
+		require.Equal(t, 1, code)
+		require.Equal(t, "a.sh:1: command \"sudo\" is denied\n", stderr)
+	})
+
+	t.Run("allow checks reported commands only", func(t *testing.T) {
+		code, _, stderr := runIn(t, files, "-allow=jq", ".")
+		require.Equal(t, 1, code)
+		require.Equal(t, "a.sh:3: command \"yq\" is not allowed\n", stderr)
+	})
+
+	t.Run("no violation", func(t *testing.T) {
+		code, stdout, stderr := runIn(t, files, "-allow=jq,yq", "-deny=nc", ".")
+		require.Equal(t, 0, code)
+		require.Empty(t, stderr)
+		require.Equal(t, "a.sh\n  jq\n  yq\n\n", stdout)
 	})
 }

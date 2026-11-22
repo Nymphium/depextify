@@ -16,6 +16,7 @@
 - **Result Aggregation**: Summarize findings across the entire project with a single command.
 - **Syntax Highlighting**: Beautifully highlighted output using [chroma](https://github.com/alecthomas/chroma).
 - **Multiple Formats**: Export results as Text, JSON, YAML, or Markdown.
+- **Command Policies**: Fail the run when denied commands are used, or when commands outside an allow list are reported.
 - **Configurable**: Project-specific settings via `.depextify.yaml`.
 
 ## Installation
@@ -55,6 +56,8 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-[no-]gitignore-aware`: Enable/disable respect for `.gitignore` files (default: enabled).
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
 - `-query=cmd1,cmd2,...`: Report only these commands, to find the files (and, with `-pos`, the lines) that use them. The ignore rules do not apply to queried commands.
+- `-deny=cmd1,cmd2,...`: Fail (exit status 1) when any of these commands is used, even if an ignore rule hides it, printing each use as `file:line` on stderr.
+- `-allow=cmd1,cmd2,...`: Fail (exit status 1) when a reported command is not in this list, printing each use as `file:line` on stderr.
 - `-list=cat1,cat2,...`: List ignored commands in specified categories (`builtins`, `coreutils`, `common`) or `all`, then exit.
 - `-lexer <name>`: Specify the [chroma](https://github.com/alecthomas/chroma) lexer for syntax highlighting (default: `bash`).
 - `-style <name>`: Specify the chroma style for syntax highlighting (default: `monokai`). Can also be set via the `DEPEXTIFY_STYLE` environment variable.
@@ -83,7 +86,13 @@ ignores:
 excludes:
   - vendor/
   - node_modules/
+deny:
+  - nc
+  - telnet
+allow: []
 ```
+
+`-ignores`, `-allow` and `-deny` add to the lists in the configuration file.
 
 ## Ignoring Files
 
@@ -137,6 +146,21 @@ $ depextify -format=markdown -aggregate examples
   - `go`
   - `jq`
   - `notify-send`
+```
+
+### Fail on denied commands
+
+`sudo` is a common tool and hidden by default, but `-deny` still finds it.
+
+```sh
+$ depextify -deny=sudo,nc deploy.sh
+jq
+nc
+
+deploy.sh:3: command "nc" is denied
+deploy.sh:1: command "sudo" is denied
+$ echo $?
+1
 ```
 
 ### Include coreutils and common tools

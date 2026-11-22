@@ -23,6 +23,9 @@ type CLIConfig struct {
 	depextify.Config       `yaml:",inline"`
 	depextify.FormatConfig `yaml:",inline"`
 
+	Allow []string `yaml:"allow"`
+	Deny  []string `yaml:"deny"`
+
 	List       string `yaml:"-"`
 	IgnoresStr string `yaml:"-"`
 	Target     string `yaml:"-"`
@@ -106,6 +109,8 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 			return nil
 		}
 	}
+	fs.Func("allow", "comma-separated list of the only commands allowed among the reported ones; others fail the run", appendTo(&cfg.Allow))
+	fs.Func("deny", "comma-separated list of commands that fail the run when used, even if ignored", appendTo(&cfg.Deny))
 	fs.Func("query", "comma-separated list of commands to find; only they are reported, even if ignored", appendTo(&cfg.Query))
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml, markdown)")
 
@@ -123,6 +128,8 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -[no-]gitignore-aware\n    \t%s\n", u("no-gitignore-aware"))
 		fmt.Fprintf(os.Stderr, "  -ignores string\n    \t%s\n", u("ignores"))
 		fmt.Fprintf(os.Stderr, "  -query string\n    \t%s\n", u("query"))
+		fmt.Fprintf(os.Stderr, "  -allow string\n    \t%s\n", u("allow"))
+		fmt.Fprintf(os.Stderr, "  -deny string\n    \t%s\n", u("deny"))
 		fmt.Fprintf(os.Stderr, "  -list string\n    \t%s\n", u("list"))
 		fmt.Fprintf(os.Stderr, "  -lexer string\n    \t%s (default: %q)\n", u("lexer"), depextify.DefaultLexer)
 		fmt.Fprintf(os.Stderr, "  -style string\n    \t%s (default: %q)\n", u("style"), depextify.DefaultStyle)
