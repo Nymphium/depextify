@@ -34,6 +34,7 @@ type CLIConfig struct {
 	Format     string `yaml:"format"`
 
 	Interactive bool `yaml:"-"`
+	Lookup      bool `yaml:"-"`
 
 	// configPath is the config file loadConfigFile read, or "" when there was none.
 	configPath string
@@ -96,6 +97,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
 	fs.BoolVar(&cfg.Interactive, "interactive", false, "ask which reported commands to ignore and add them to the ignores of .depextify.yaml")
 	fs.BoolVar(&cfg.Interactive, "i", false, "shorthand for -interactive")
+	fs.BoolVar(&cfg.Lookup, "lookup", false, "experimental: print the packages providing each reported command instead of the result, using nix-locate, apt-file, pacman or dnf")
 	fs.BoolVar(&cfg.Hints, "hints", cfg.Hints, "print notes on stderr about commands whose versions or variants differ between systems")
 
 	// pair defines -name and -no-name on p; -name stores the negated value when neg is set.
@@ -135,6 +137,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -aggregate\n    \t%s\n", u("aggregate"))
 		fmt.Fprintf(os.Stderr, "  -hints\n    \t%s\n", u("hints"))
 		fmt.Fprintf(os.Stderr, "  -interactive, -i\n    \t%s\n", u("interactive"))
+		fmt.Fprintf(os.Stderr, "  -lookup\n    \t%s\n", u("lookup"))
 		fmt.Fprintf(os.Stderr, "  -[no-]builtin\n    \t%s\n", u("no-builtin"))
 		fmt.Fprintf(os.Stderr, "  -[no-]coreutils\n    \t%s\n", u("no-coreutils"))
 		fmt.Fprintf(os.Stderr, "  -[no-]common\n    \t%s\n", u("no-common"))
