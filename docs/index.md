@@ -55,6 +55,8 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | `-no-gitignore-aware` | Ignore `.gitignore` files. | `false` |
 | `-ignores` | Comma-separated list of additional commands to ignore. | `""` |
 | `-query` | Comma-separated list of commands to find. Only they are reported, even if an ignore rule covers them. | `""` |
+| `-deny` | Comma-separated list of commands that fail the run (exit status 1) when used, even if an ignore rule hides them. Each use is printed as `file:line` on stderr. | `""` |
+| `-allow` | Comma-separated list of the only commands allowed among the reported ones. Any other reported command fails the run (exit status 1). | `""` |
 | `-list` | List ignored commands in specified categories and exit. | `""` |
 | `-lexer` | Specify the chroma lexer for highlighting. | `bash` |
 | `-style` | Specify the chroma style for highlighting. | `monokai` |
@@ -106,6 +108,12 @@ excludes:           # List of file/directory glob patterns to skip
   - node_modules/
   - dist/
   - "**/*.min.js"
+
+# Command policies (the -allow and -deny flags add to these lists)
+deny:               # Fail when any of these commands is used, even if ignored
+  - nc
+  - telnet
+allow: []           # When not empty, fail when a reported command is not listed
 ```
 
 ---
