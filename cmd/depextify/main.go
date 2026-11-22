@@ -59,11 +59,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		formatter = &depextify.TextFormatter{Config: &formatConfig}
 	}
 
-	out, err := formatter.Format(results)
-	if err != nil {
-		return fail("Error formatting output: %v\n", err)
+	if cfg.Generate != "" {
+		_, _ = fmt.Fprint(stdout, generate(cfg.Generate, results.Commands()))
+	} else {
+		out, err := formatter.Format(results)
+		if err != nil {
+			return fail("Error formatting output: %v\n", err)
+		}
+		_, _ = fmt.Fprintln(stdout, out)
 	}
-	_, _ = fmt.Fprintln(stdout, out)
 
 	if !cfg.Hints && len(cfg.Allow) == 0 && len(cfg.Deny) == 0 {
 		return 0

@@ -27,6 +27,7 @@ type CLIConfig struct {
 	Allow []string `yaml:"allow"`
 	Deny  []string `yaml:"deny"`
 
+	Generate   string `yaml:"-"`
 	List       string `yaml:"-"`
 	IgnoresStr string `yaml:"-"`
 	Target     string `yaml:"-"`
@@ -115,6 +116,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs.Func("deny", "comma-separated list of commands that fail the run when used, even if ignored", appendTo(&cfg.Deny))
 	fs.Func("query", "comma-separated list of commands to find; only they are reported, even if ignored", appendTo(&cfg.Query))
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml, markdown)")
+	fs.StringVar(&cfg.Generate, "generate", "", "print an installation template (brew, apt, nix) for the reported commands instead of the result")
 
 	fs.Usage = func() {
 		u := func(name string) string { return fs.Lookup(name).Usage }
@@ -137,6 +139,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -lexer string\n    \t%s (default: %q)\n", u("lexer"), depextify.DefaultLexer)
 		fmt.Fprintf(os.Stderr, "  -style string\n    \t%s (default: %q)\n", u("style"), depextify.DefaultStyle)
 		fmt.Fprintf(os.Stderr, "  -format string\n    \t%s (default: \"text\")\n", u("format"))
+		fmt.Fprintf(os.Stderr, "  -generate string\n    \t%s\n", u("generate"))
 	}
 	return fs
 }
@@ -176,6 +179,10 @@ func parseFlags(args []string) (*CLIConfig, error) {
 
 	if !slices.Contains([]string{"", "text", "json", "yaml", "markdown"}, cfg.Format) {
 		return nil, fmt.Errorf("unknown format %q (text, json, yaml, markdown)", cfg.Format)
+	}
+
+	if _, ok := generators[cfg.Generate]; cfg.Generate != "" && !ok {
+		return nil, fmt.Errorf("unknown generator %q (brew, apt, nix)", cfg.Generate)
 	}
 
 	if envStyle := os.Getenv("DEPEXTIFY_STYLE"); envStyle != "" {
