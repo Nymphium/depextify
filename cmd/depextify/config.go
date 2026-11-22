@@ -93,7 +93,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 
 	fs.BoolVar(&cfg.ShowCount, "count", cfg.ShowCount, "show appearance count for each command")
 	fs.BoolVar(&cfg.ShowPos, "pos", cfg.ShowPos, "show file position and full line for each command")
-	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories")
+	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories, except .git")
 	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
 	fs.BoolVar(&cfg.Interactive, "interactive", false, "ask which reported commands to ignore and add them to the ignores of .depextify.yaml")
 	fs.BoolVar(&cfg.Interactive, "i", false, "shorthand for -interactive")

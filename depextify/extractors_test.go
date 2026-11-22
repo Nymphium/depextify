@@ -106,17 +106,16 @@ func TestExtractors_Variables(t *testing.T) {
 			&MakefileExtractor{},
 			"CC = gcc\nLD = ld\nall:\n\t$(CC) main.c\n\t${MAKE} -C sub",
 			map[string][]PosInfo{
-				"gcc":   {{line: 1, col: 6, len: 3}},
-				"$MAKE": {{line: 5, col: 2, len: 7}},
+				"gcc": {{line: 1, col: 6, len: 3}},
 			},
 		},
 		{
 			"Dockerfile ARG and ENV",
 			&DockerfileExtractor{},
-			"ARG CC=gcc\nENV GIT git\nENV UNUSED tool\nRUN $CC main.c && ${GIT} clone x",
+			"ARG CC=gcc\nENV GIT=\"git\"\nENV UNUSED tool\nRUN $CC main.c && ${GIT} clone x",
 			map[string][]PosInfo{
 				"gcc": {{line: 1, col: 8, len: 3}},
-				"git": {{line: 2, col: 9, len: 3}},
+				"git": {{line: 2, col: 9, len: 5}},
 			},
 		},
 		{

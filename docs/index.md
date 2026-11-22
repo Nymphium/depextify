@@ -41,7 +41,7 @@ By default, `depextify` recursively scans the specified directory or file. It au
 | :--- | :--- | :--- |
 | `-count` | Show the occurrence count for each command. | `false` |
 | `-pos` | Show file path, line number, and the source line for each occurrence. | `false` |
-| `-hidden` | Recursively scan hidden files and directories (e.g., `.git`, `.config`). | `false` |
+| `-hidden` | Recursively scan hidden files and directories (e.g., `.github`, `.config`). `.git` is never scanned. | `false` |
 | `-aggregate` | Aggregate results across all files into a single report for the target. | `false` |
 | `-hints` | Print notes on stderr about commands whose versions or variants differ between systems (e.g., `python` 2 or 3, GNU or BSD `sed`), including commands hidden by the ignore rules. | `false` |
 | `-builtin` | Include shell built-in commands (e.g., `cd`, `echo`, `export`) in the output. | `false` |
@@ -150,7 +150,7 @@ scripts/dev-only.sh
 
 `depextify` detects dependencies in various file formats by parsing the underlying shell scripts embedded within them.
 
-A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc`. Makefile assignments with `$(CC)` in recipes, Dockerfile `ARG`/`ENV` and YAML `env:` blocks are resolved the same way. A variable whose value is unknown (such as `$1`, or one set by the environment) is reported as `$NAME`, and assignments to variables that are never run as commands are not reported.
+A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc`. Makefile assignments with `$(CC)` in recipes, Dockerfile `ARG`/`ENV` and YAML `env:` blocks are resolved the same way. Commands whose names are not known statically (such as `$1`, a variable set by the environment, or `"$DIR/run.sh"`) are not reported, and neither are assignments to variables that are never run as commands. Quotes and escapes are removed from command names, so `"jq"`, `'jq'` and `\jq` are all reported as `jq`.
 
 ### 1. Shell Scripts
 *   **Extensions:** `.sh`, `.bash`, `.zsh`, `.ksh`
