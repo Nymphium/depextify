@@ -19,11 +19,7 @@ func TestExtractors(t *testing.T) {
 				"all:\n\techo hello\n\tls -l",
 				[]string{"echo", "ls"},
 			},
-			{
-				"assignment",
-				"CC = gcc\nall:\n\t$(CC) main.c",
-				[]string{"gcc", "$CC", "CC"}, // CC is identified as a command in recipe
-			},
+
 			{
 				"multiline",
 				"all:\n\tcmd1 \\\n\t&& cmd2",
@@ -53,11 +49,6 @@ func TestExtractors(t *testing.T) {
 				"RUN command",
 				"FROM alpine\nRUN apk add git\nRUN go build",
 				[]string{"apk", "go"},
-			},
-			{
-				"ENV and ARG",
-				"ARG CC=gcc\nENV GIT git\nRUN $(CC) clone",
-				[]string{"gcc", "git", "$CC", "$GIT"},
 			},
 		}
 
@@ -89,11 +80,6 @@ func TestExtractors(t *testing.T) {
 				"tasks:\n  build:\n    cmds:\n      - go build\n      - cmd: ls",
 				[]string{"go", "ls"},
 			},
-			{
-				"env block",
-				"env:\n  CC: gcc\nsteps:\n  - run: $(CC) build",
-				[]string{"gcc", "$CC"},
-			},
 		}
 
 		for _, tt := range tests {
@@ -106,6 +92,49 @@ func TestExtractors(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestExtractors_Variables(t *testing.T) {
+	tests := []struct {
+		name      string
+		extractor Extractor
+		content   string
+		expected  map[string][]PosInfo
+	}{
+		{
+			"Makefile variable",
+			&MakefileExtractor{},
+			"CC = gcc\nLD = ld\nall:\n\t$(CC) main.c\n\t${MAKE} -C sub",
+			map[string][]PosInfo{
+				"gcc":   {{line: 1, col: 6, len: 3}},
+				"$MAKE": {{line: 5, col: 2, len: 7}},
+			},
+		},
+		{
+			"Dockerfile ARG and ENV",
+			&DockerfileExtractor{},
+			"ARG CC=gcc\nENV GIT git\nENV UNUSED tool\nRUN $CC main.c && ${GIT} clone x",
+			map[string][]PosInfo{
+				"gcc": {{line: 1, col: 8, len: 3}},
+				"git": {{line: 2, col: 9, len: 3}},
+			},
+		},
+		{
+			"YAML env",
+			&YAMLExtractor{},
+			"env:\n  CC: gcc\n  UNUSED: tool\nsteps:\n  - run: $CC build",
+			map[string][]PosInfo{
+				"gcc": {{line: 2, col: 7, len: 3}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := tt.extractor.Extract([]byte(tt.content))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, res)
+		})
+	}
 }
 
 func TestYAMLExtractorCountsCmdMappingOnce(t *testing.T) {

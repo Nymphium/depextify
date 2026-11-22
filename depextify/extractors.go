@@ -3,8 +3,10 @@ package depextify
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -37,37 +39,91 @@ type (
 	YAMLExtractor struct{}
 )
 
+// found is what an extractor collects from a file before variables are resolved.
+type found struct {
+	cmds    map[string][]PosInfo // commands named in the source, keyed by their source text
+	runs    map[string][]PosInfo // variables run as commands ($CC main.c), keyed by variable name
+	assigns map[string][]PosInfo // command-like values assigned to variables, keyed by "NAME=value", at the value
+}
+
+func newFound() found {
+	return found{cmds: map[string][]PosInfo{}, runs: map[string][]PosInfo{}, assigns: map[string][]PosInfo{}}
+}
+
+// merge adds src to f, moving each position with shift and dropping the ones it rejects.
+func (f found) merge(src found, shift func(PosInfo) (PosInfo, bool)) {
+	for _, m := range [][2]map[string][]PosInfo{{f.cmds, src.cmds}, {f.runs, src.runs}, {f.assigns, src.assigns}} {
+		for key, infos := range m[1] {
+			for _, info := range infos {
+				if info, ok := shift(info); ok {
+					m[0][key] = append(m[0][key], info)
+				}
+			}
+		}
+	}
+}
+
+// resolve returns the commands of f, with each variable run as a command replaced by the values assigned to it
+// in the same file, or reported as "$NAME" when no assigned value names a command.
+// Assignments to variables that are never run are dropped.
+func (f found) resolve() map[string][]PosInfo {
+	res := make(map[string][]PosInfo, len(f.cmds))
+	for cmd, infos := range f.cmds {
+		res[cmd] = slices.Clone(infos)
+	}
+	// ponytail: scans every assignment per run variable; index assignments by name if files get huge.
+	for name, runs := range f.runs {
+		resolved := false
+		for key, infos := range f.assigns {
+			if n, val, _ := strings.Cut(key, "="); n == name {
+				res[val] = append(res[val], infos...)
+				resolved = true
+			}
+		}
+		if !resolved {
+			res["$"+name] = append(res["$"+name], runs...)
+		}
+	}
+	for _, infos := range res {
+		slices.SortFunc(infos, func(a, b PosInfo) int {
+			return cmp.Or(cmp.Compare(a.line, b.line), cmp.Compare(a.col, b.col))
+		})
+	}
+	return res
+}
+
 var (
+	// reMakeVar matches a Make variable reference such as $(CC), which a recipe expands before the shell runs it.
+	reMakeVar = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
+
 	reTaskfile   = regexp.MustCompile(`[Tt]askfile\.ya?ml`)
 	reMakefile   = regexp.MustCompile(`[Mm]akefile|MAKEFILE`)
 	reDockerfile = regexp.MustCompile(`Dockerfile|DOCKERFILE`)
 )
 
-// analyzeShellCode parses the given shell code and returns command occurrences.
-func analyzeShellCode(content []byte) (map[string][]PosInfo, error) {
+// analyzeShellCode parses the given shell code and returns what it finds, with variables unresolved.
+func analyzeShellCode(content []byte) (found, error) {
 	parser := syntax.NewParser()
 	file, err := parser.Parse(bytes.NewReader(content), "")
 	if err != nil {
-		return nil, err
+		return found{}, err
 	}
 
 	localFuncs := collectLocalFuncs(file)
 	return collectCommands(file, localFuncs, content), nil
 }
 
-// addScript merges the commands of script, which starts at line startLine, into results.
+// addScript merges what script, which starts at line startLine, contains into results.
 // A script that fails to parse contributes nothing.
-func addScript(results map[string][]PosInfo, script string, startLine int) {
-	cmds, err := analyzeShellCode([]byte(script))
+func addScript(results found, script string, startLine int) {
+	src, err := analyzeShellCode([]byte(script))
 	if err != nil {
 		return
 	}
-	for cmd, infos := range cmds {
-		for _, info := range infos {
-			info.line += uint(startLine - 1)
-			results[cmd] = append(results[cmd], info)
-		}
-	}
+	results.merge(src, func(info PosInfo) (PosInfo, bool) {
+		info.line += uint(startLine - 1)
+		return info, true
+	})
 }
 
 // addInLine records key at the first occurrence of text in line, which is line number lineNum.
@@ -77,24 +133,25 @@ func addInLine(results map[string][]PosInfo, key, text, line string, lineNum int
 	}
 }
 
-// addAssign records an assignment name=val found in line: the variable as "$name", and val when it looks like a command.
-func addAssign(results map[string][]PosInfo, line string, lineNum int, name, val string) {
-	if name != "" {
-		addInLine(results, "$"+name, name, line, lineNum)
-	}
-	if looksLikeCommand(val) {
-		addInLine(results, val, val, line, lineNum)
+// addAssign records an assignment name=val found in line when val looks like a command.
+func addAssign(results found, line string, lineNum int, name, val string) {
+	if name != "" && looksLikeCommand(val) {
+		addInLine(results.assigns, name+"="+val, val, line, lineNum)
 	}
 }
 
 // Extract implements Extractor for shell scripts.
 func (e *ShellExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
-	return analyzeShellCode(content)
+	f, err := analyzeShellCode(content)
+	if err != nil {
+		return nil, err
+	}
+	return f.resolve(), nil
 }
 
 // Extract implements Extractor for Makefiles.
 func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
-	results := make(map[string][]PosInfo)
+	results := newFound()
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 
 	var buffer strings.Builder
@@ -147,7 +204,8 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error
 			}
 		}
 
-		buffer.WriteString(string(runes))
+		// $(CC) becomes ${CC}, which has the same length, so the shell parser sees a variable instead of a command substitution.
+		buffer.WriteString(reMakeVar.ReplaceAllString(string(runes), "$${${1}}"))
 
 		if strings.HasSuffix(strings.TrimRightFunc(line, unicode.IsSpace), "\\") {
 			buffer.WriteString("\n")
@@ -157,12 +215,12 @@ func (e *MakefileExtractor) Extract(content []byte) (map[string][]PosInfo, error
 	}
 	flush()
 
-	return results, nil
+	return results.resolve(), nil
 }
 
 // Extract extracts commands from Dockerfile content.
 func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
-	results := make(map[string][]PosInfo)
+	results := newFound()
 	scanner := bufio.NewScanner(bytes.NewReader(content))
 
 	var buffer strings.Builder
@@ -208,7 +266,7 @@ func (e *DockerfileExtractor) Extract(content []byte) (map[string][]PosInfo, err
 			buffer.Reset()
 		}
 	}
-	return results, nil
+	return results.resolve(), nil
 }
 
 // Extract extracts commands from YAML content.
@@ -219,19 +277,15 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	}
 
 	lines := bytes.Split(content, []byte("\n"))
-	results := make(map[string][]PosInfo)
+	results := newFound()
 
 	addScalarScript := func(n *yaml.Node) {
 		if n.Kind != yaml.ScalarNode {
 			return
 		}
-		if cmds, err := analyzeShellCode([]byte(n.Value)); err == nil {
-			applyYAMLOffset(cmds, n, lines, results)
+		if src, err := analyzeShellCode([]byte(n.Value)); err == nil {
+			results.merge(src, yamlShift(n, lines))
 		}
-	}
-	// addScalar records the whole scalar n under key.
-	addScalar := func(n *yaml.Node, key string) {
-		applyYAMLOffset(map[string][]PosInfo{key: {{line: 1, col: 1, len: uint(len(n.Value))}}}, n, lines, results)
 	}
 
 	var walk func(*yaml.Node)
@@ -254,11 +308,9 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 					for j := 0; j < len(val.Content); j += 2 {
 						k := val.Content[j]
 						v := val.Content[j+1]
-						if k.Value != "" {
-							addScalar(k, "$"+k.Value)
-						}
-						if v.Kind == yaml.ScalarNode && looksLikeCommand(v.Value) {
-							addScalar(v, v.Value)
+						if k.Value != "" && v.Kind == yaml.ScalarNode && looksLikeCommand(v.Value) {
+							assign := map[string][]PosInfo{k.Value + "=" + v.Value: {{line: 1, col: 1, len: uint(len(v.Value))}}}
+							results.merge(found{assigns: assign}, yamlShift(v, lines))
 						}
 					}
 				}
@@ -272,35 +324,27 @@ func (e *YAMLExtractor) Extract(content []byte) (map[string][]PosInfo, error) {
 	}
 
 	walk(&node)
-	return results, nil
+	return results.resolve(), nil
 }
 
-func applyYAMLOffset(cmds map[string][]PosInfo, val *yaml.Node, lines [][]byte, results map[string][]PosInfo) {
+// yamlShift moves a position within the value of the scalar val to its position in the YAML file, whose lines are lines.
+func yamlShift(val *yaml.Node, lines [][]byte) func(PosInfo) (PosInfo, bool) {
 	shellLines := strings.Split(val.Value, "\n")
 	baseLine := val.Line
 	if val.Style == yaml.LiteralStyle || val.Style == yaml.FoldedStyle {
 		baseLine++
 	}
 
-	for cmd, infos := range cmds {
-		for _, info := range infos {
-			relLineIdx := int(info.line) - 1
-			absLineIdx := baseLine - 1 + relLineIdx
-
-			if absLineIdx < len(lines) && relLineIdx < len(shellLines) {
-				origLine := string(lines[absLineIdx])
-				shellLine := shellLines[relLineIdx]
-
-				colOffset := strings.Index(origLine, shellLine)
-				if colOffset == -1 {
-					colOffset = 0
-				}
-
-				info.line = uint(absLineIdx + 1)
-				info.col += uint(colOffset)
-				results[cmd] = append(results[cmd], info)
-			}
+	return func(info PosInfo) (PosInfo, bool) {
+		relLineIdx := int(info.line) - 1
+		absLineIdx := baseLine - 1 + relLineIdx
+		if absLineIdx >= len(lines) || relLineIdx >= len(shellLines) {
+			return info, false
 		}
+		colOffset := max(strings.Index(string(lines[absLineIdx]), shellLines[relLineIdx]), 0)
+		info.line = uint(absLineIdx + 1)
+		info.col += uint(colOffset)
+		return info, true
 	}
 }
 

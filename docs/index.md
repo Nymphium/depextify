@@ -150,6 +150,8 @@ scripts/dev-only.sh
 
 `depextify` detects dependencies in various file formats by parsing the underlying shell scripts embedded within them.
 
+A command run through a variable is reported by the value assigned to that variable in the same file: `CC=gcc` followed by `$CC main.c` reports `gcc`. Makefile assignments with `$(CC)` in recipes, Dockerfile `ARG`/`ENV` and YAML `env:` blocks are resolved the same way. A variable whose value is unknown (such as `$1`, or one set by the environment) is reported as `$NAME`, and assignments to variables that are never run as commands are not reported.
+
 ### 1. Shell Scripts
 *   **Extensions:** `.sh`, `.bash`, `.zsh`, `.ksh`
 *   **Shebangs:** Files starting with `#!/bin/sh`, `#!/bin/bash`, `#!/usr/bin/env bash`, etc.
