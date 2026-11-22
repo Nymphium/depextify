@@ -63,7 +63,7 @@ func TestIntegration(t *testing.T) {
 }
 
 // runIn runs the CLI in a fresh directory whose empty .depextify.yaml keeps the user's home config out.
-func runIn(t *testing.T, files map[string]string, args ...string) (code int, stdout, stderr string) {
+func runIn(t *testing.T, files map[string]string, stdin string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -73,7 +73,7 @@ func runIn(t *testing.T, files map[string]string, args ...string) (code int, std
 		require.NoError(t, os.WriteFile(name, []byte(content), 0600))
 	}
 	var out, errOut bytes.Buffer
-	code = run(append([]string{"-no-color"}, args...), &out, &errOut)
+	code = run(append([]string{"-no-color"}, args...), strings.NewReader(stdin), &out, &errOut)
 	return code, out.String(), errOut.String()
 }
 
@@ -81,19 +81,19 @@ func TestRun_Policy(t *testing.T) {
 	files := map[string]string{"a.sh": "sudo ls\njq .\nyq .\n"}
 
 	t.Run("deny finds ignored commands", func(t *testing.T) {
-		code, _, stderr := runIn(t, files, "-deny=sudo", ".")
+		code, _, stderr := runIn(t, files, "", "-deny=sudo", ".")
 		require.Equal(t, 1, code)
 		require.Equal(t, "a.sh:1: command \"sudo\" is denied\n", stderr)
 	})
 
 	t.Run("allow checks reported commands only", func(t *testing.T) {
-		code, _, stderr := runIn(t, files, "-allow=jq", ".")
+		code, _, stderr := runIn(t, files, "", "-allow=jq", ".")
 		require.Equal(t, 1, code)
 		require.Equal(t, "a.sh:3: command \"yq\" is not allowed\n", stderr)
 	})
 
 	t.Run("no violation", func(t *testing.T) {
-		code, stdout, stderr := runIn(t, files, "-allow=jq,yq", "-deny=nc", ".")
+		code, stdout, stderr := runIn(t, files, "", "-allow=jq,yq", "-deny=nc", ".")
 		require.Equal(t, 0, code)
 		require.Empty(t, stderr)
 		require.Equal(t, "a.sh\n  jq\n  yq\n\n", stdout)
@@ -101,7 +101,7 @@ func TestRun_Policy(t *testing.T) {
 }
 
 func TestRun_Hints(t *testing.T) {
-	code, stdout, stderr := runIn(t, map[string]string{"a.sh": "python x.py\ngrep -P foo f\njq .\n"}, "-hints", "a.sh")
+	code, stdout, stderr := runIn(t, map[string]string{"a.sh": "python x.py\ngrep -P foo f\njq .\n"}, "", "-hints", "a.sh")
 	require.Equal(t, 0, code)
 	require.Equal(t, "jq\npython\n\n", stdout)
 	lines := strings.Split(strings.TrimSuffix(stderr, "\n"), "\n")

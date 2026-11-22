@@ -32,6 +32,11 @@ type CLIConfig struct {
 	IgnoresStr string `yaml:"-"`
 	Target     string `yaml:"-"`
 	Format     string `yaml:"format"`
+
+	Interactive bool `yaml:"-"`
+
+	// configPath is the config file loadConfigFile read, or "" when there was none.
+	configPath string
 }
 
 // boolFlag is a boolean flag that writes its value to p, negated when neg is set.
@@ -76,6 +81,7 @@ func loadConfigFile(cfg *CLIConfig) {
 	for _, path := range paths {
 		if content, err := os.ReadFile(path); err == nil {
 			_ = yaml.Unmarshal(content, cfg)
+			cfg.configPath = path
 			return
 		}
 	}
@@ -88,6 +94,8 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs.BoolVar(&cfg.ShowPos, "pos", cfg.ShowPos, "show file position and full line for each command")
 	fs.BoolVar(&cfg.ShowHidden, "hidden", cfg.ShowHidden, "scan hidden files and directories")
 	fs.BoolVar(&cfg.Aggregate, "aggregate", cfg.Aggregate, "aggregate results across all files")
+	fs.BoolVar(&cfg.Interactive, "interactive", false, "ask which reported commands to ignore and add them to the ignores of .depextify.yaml")
+	fs.BoolVar(&cfg.Interactive, "i", false, "shorthand for -interactive")
 	fs.BoolVar(&cfg.Hints, "hints", cfg.Hints, "print notes on stderr about commands whose versions or variants differ between systems")
 
 	// pair defines -name and -no-name on p; -name stores the negated value when neg is set.
@@ -126,6 +134,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -hidden\n    \t%s\n", u("hidden"))
 		fmt.Fprintf(os.Stderr, "  -aggregate\n    \t%s\n", u("aggregate"))
 		fmt.Fprintf(os.Stderr, "  -hints\n    \t%s\n", u("hints"))
+		fmt.Fprintf(os.Stderr, "  -interactive, -i\n    \t%s\n", u("interactive"))
 		fmt.Fprintf(os.Stderr, "  -[no-]builtin\n    \t%s\n", u("no-builtin"))
 		fmt.Fprintf(os.Stderr, "  -[no-]coreutils\n    \t%s\n", u("no-coreutils"))
 		fmt.Fprintf(os.Stderr, "  -[no-]common\n    \t%s\n", u("no-common"))

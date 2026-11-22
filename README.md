@@ -56,6 +56,7 @@ By default, it recursively scans directories and filters out shell built-ins, GN
 - `-[no-]color`: Enable/disable colored output (default: auto).
 - `-[no-]gitignore-aware`: Enable/disable respect for `.gitignore` files (default: enabled).
 - `-ignores=cmd1,cmd2,...`: Comma-separated list of additional commands to ignore.
+- `-interactive`, `-i`: Ask, for each reported command, whether to keep or ignore it, and add the ignored ones to `ignores` in the configuration file that was loaded (or `./.depextify.yaml` when there is none). Other keys and comments in the file are kept.
 - `-query=cmd1,cmd2,...`: Report only these commands, to find the files (and, with `-pos`, the lines) that use them. The ignore rules do not apply to queried commands.
 - `-deny=cmd1,cmd2,...`: Fail (exit status 1) when any of these commands is used, even if an ignore rule hides it, printing each use as `file:line` on stderr.
 - `-allow=cmd1,cmd2,...`: Fail (exit status 1) when a reported command is not in this list, printing each use as `file:line` on stderr.
@@ -183,6 +184,17 @@ pkgs.mkShell {
 ```
 
 Here `notify-send` is provided by the `libnotify` package, so that line needs editing.
+
+### Build the ignore list interactively
+
+```sh
+$ depextify -i examples
+$FILE_COUNT (1 use): [k]eep, [i]gnore, [q]uit? i
+$NOW (1 use): [k]eep, [i]gnore, [q]uit? i
+...
+notify-send (1 use): [k]eep, [i]gnore, [q]uit? k
+Added $FILE_COUNT, $NOW to the ignores in .depextify.yaml.
+```
 
 ### Include coreutils and common tools
 
