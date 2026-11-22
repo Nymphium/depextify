@@ -43,11 +43,10 @@ type (
 var (
 	reShellExt = regexp.MustCompile(`\.(ba|b|z|k|da)?sh$`)
 	reShebang  = regexp.MustCompile(`^#!\s*/.*(sh|bash|zsh|ksh)`)
-)
 
-func toInt(u uint) int {
-	return int(u)
-}
+	// wrappers take another command as an argument.
+	wrappers = set("sudo", "xargs", "time", "exec", "nice", "nohup", "command", "builtin", "which", "type")
+)
 
 // collectLocalFuncs() collects name of f()
 func collectLocalFuncs(file *syntax.File) map[string]bool {
@@ -62,96 +61,63 @@ func collectLocalFuncs(file *syntax.File) map[string]bool {
 	return localFuncs
 }
 
+func addPos(m map[string][]PosInfo, key string, pos syntax.Pos, n int) {
+	m[key] = append(m[key], PosInfo{line: pos.Line(), col: pos.Col(), len: uint(n)})
+}
+
+// looksLikeCommand reports whether an assigned value may name a command, such as CC=gcc.
+func looksLikeCommand(v string) bool {
+	return v != "" && !strings.Contains(v, " ") && !strings.HasPrefix(v, "-") && !strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "./")
+}
+
 // collectCommands() collects command names from various nodes with filtering:
 // - not local functions
 // - not starting with '-'
 func collectCommands(file *syntax.File, localFuncs map[string]bool, source []byte) map[string][]PosInfo {
 	commands := make(map[string][]PosInfo)
 
-	// List of commands that take another command as an argument
-	wrappers := map[string]bool{
-		"sudo":    true,
-		"xargs":   true,
-		"time":    true,
-		"exec":    true,
-		"nice":    true,
-		"nohup":   true,
-		"command": true,
-		"builtin": true,
-		"which":   true,
-		"type":    true,
+	// addCall records the first non-flag word of args, and recurses into the arguments of wrappers such as sudo.
+	var addCall func(parentCmd string, args []*syntax.Word)
+	addCall = func(parentCmd string, args []*syntax.Word) {
+		skipNext := false
+		for i, arg := range args {
+			if skipNext {
+				skipNext = false
+				continue
+			}
+
+			cmd := wordToString(arg)
+			if strings.HasPrefix(cmd, "-") {
+				skipNext = isFlagWithArg(parentCmd, cmd)
+				continue
+			}
+
+			if cmd != "" && !localFuncs[cmd] {
+				// Use original source text for accurate length and representation
+				rawCmd := getNodeText(arg, source)
+				addPos(commands, rawCmd, arg.Pos(), len(rawCmd))
+				if wrappers[cmd] {
+					addCall(cmd, args[i+1:])
+				}
+			}
+			return
+		}
 	}
 
 	syntax.Walk(file, func(node syntax.Node) bool {
 		switch x := node.(type) {
 		case *syntax.TimeClause:
-			commands["time"] = append(commands["time"], PosInfo{
-				line: x.Time.Line(),
-				col:  x.Time.Col(),
-				len:  uint(len("time")),
-			})
+			addPos(commands, "time", x.Time, len("time"))
 		case *syntax.CallExpr:
-			if len(x.Args) > 0 {
-				var handleArgs func(parentCmd string, args []*syntax.Word)
-				handleArgs = func(parentCmd string, args []*syntax.Word) {
-					skipNext := false
-					for i, arg := range args {
-						if skipNext {
-							skipNext = false
-							continue
-						}
-
-						cmd := wordToString(arg)
-						if strings.HasPrefix(cmd, "-") {
-							if isFlagWithArg(parentCmd, cmd) {
-								skipNext = true
-							}
-							continue
-						}
-
-						if cmd != "" && !localFuncs[cmd] {
-							// Use original source text for accurate length and representation
-							rawCmd := getNodeText(arg, source)
-							commands[rawCmd] = append(commands[rawCmd], PosInfo{
-								line: arg.Pos().Line(),
-								col:  arg.Pos().Col(),
-								len:  uint(len(rawCmd)),
-							})
-
-							if wrappers[cmd] && i+1 < len(args) {
-								handleArgs(cmd, args[i+1:])
-							}
-						}
-						break
-					}
-				}
-				// Initial call with empty parentCmd
-				handleArgs("", x.Args)
-			}
+			addCall("", x.Args)
 		case *syntax.Assign:
 			if x.Value != nil {
-				val := wordToString(x.Value)
-
-				// Track the variable name being defined
 				if x.Name != nil {
-					name := x.Name.Value
-					commands["$"+name] = append(commands["$"+name], PosInfo{
-						line: x.Name.Pos().Line(),
-						col:  x.Name.Pos().Col(),
-						len:  uint(len(name)),
-					})
+					addPos(commands, "$"+x.Name.Value, x.Name.Pos(), len(x.Name.Value))
 				}
-
-				// Track variable assignment values if they look like potential commands.
-				if val != "" && !strings.Contains(val, " ") && !strings.HasPrefix(val, "-") && !strings.HasPrefix(val, "/") && !strings.HasPrefix(val, "./") {
-					if !localFuncs[val] {
-						rawVal := getNodeText(x.Value, source)
-						commands[rawVal] = append(commands[rawVal], PosInfo{
-							line: x.Value.Pos().Line(),
-							col:  x.Value.Pos().Col(),
-							len:  uint(len(rawVal)),
-						})
-					}
+				if val := wordToString(x.Value); looksLikeCommand(val) && !localFuncs[val] {
+					rawVal := getNodeText(x.Value, source)
+					addPos(commands, rawVal, x.Value.Pos(), len(rawVal))
 				}
 			}
 		}
@@ -192,28 +158,23 @@ func isFlagWithArg(cmd, flag string) bool {
 
 func wordToString(w *syntax.Word) string {
 	var sb strings.Builder
-	for _, part := range w.Parts {
+	writeParts(&sb, w.Parts)
+	return sb.String()
+}
+
+func writeParts(sb *strings.Builder, parts []syntax.WordPart) {
+	for _, part := range parts {
 		switch p := part.(type) {
 		case *syntax.Lit:
 			sb.WriteString(p.Value)
-		case *syntax.ParamExp:
-			sb.WriteString("$")
-			sb.WriteString(p.Param.Value)
 		case *syntax.SglQuoted:
 			sb.WriteString(p.Value)
+		case *syntax.ParamExp:
+			sb.WriteString("$" + p.Param.Value)
 		case *syntax.DblQuoted:
-			for _, qp := range p.Parts {
-				switch q := qp.(type) {
-				case *syntax.Lit:
-					sb.WriteString(q.Value)
-				case *syntax.ParamExp:
-					sb.WriteString("$")
-					sb.WriteString(q.Param.Value)
-				}
-			}
+			writeParts(sb, p.Parts)
 		}
 	}
-	return sb.String()
 }
 
 // Do analyzes the given shell script reader and returns a map of command names to their positions.
@@ -254,9 +215,9 @@ func (c *Config) calculateFileOccurrences(cmdPositions map[string][]PosInfo, lin
 		for _, p := range ps {
 			if p.line > 0 && p.line <= uint(len(lines)) {
 				fileOccs[cmd] = append(fileOccs[cmd], Occurrence{
-					Line:     toInt(p.line),
-					Col:      toInt(p.col),
-					Len:      toInt(p.len),
+					Line:     int(p.line),
+					Col:      int(p.col),
+					Len:      int(p.len),
 					FullLine: lines[p.line-1],
 				})
 			}
@@ -294,6 +255,13 @@ func (c *Config) processFile(path string, skipCheck bool, ignores map[string]boo
 	}
 }
 
+func (c *Config) ignoreFileNames() []string {
+	if c.GitignoreAware {
+		return []string{".depextifyignore", ".gitignore"}
+	}
+	return []string{".depextifyignore"}
+}
+
 // Scan recursively scans the target path (file or directory) and returns the aggregated results.
 func (c *Config) Scan(target string) (ScanResult, error) {
 	info, err := os.Stat(target)
@@ -301,56 +269,27 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 		return nil, err
 	}
 
-	isDir := info.IsDir()
-
-	ignores := make(map[string]bool)
-	for _, cmd := range c.ExtraIgnores {
-		ignores[cmd] = true
-	}
-
+	ignores := set(c.ExtraIgnores...)
 	res := make(ScanResult)
 
-	// Setup exclude matcher
-	var matcher *ignore.GitIgnore
-
-	// Load .depextifyignore if exists in the root of target or current directory
-	ignoreFiles := []string{".depextifyignore"}
-	if c.GitignoreAware {
-		ignoreFiles = append(ignoreFiles, ".gitignore")
-	}
-
-	// If explicit excludes are provided in config, start with them
-	// We compile them as if they were lines in a gitignore file
+	// Explicit excludes and the ignore files in the target directory
+	// (or in the current directory when the target is a file) are compiled as one gitignore.
 	ignoreLines := c.Excludes
-
-	for _, name := range ignoreFiles {
+	for _, name := range c.ignoreFileNames() {
 		path := name
-		if isDir {
+		if info.IsDir() {
 			path = filepath.Join(target, name)
 		}
-
 		if content, err := os.ReadFile(path); err == nil {
-			lines := strings.Split(string(content), "\n")
-			ignoreLines = append(ignoreLines, lines...)
-		} else if !isDir {
-			// Try looking in current directory if target is a file
-			if content, err := os.ReadFile(name); err == nil {
-				lines := strings.Split(string(content), "\n")
-				ignoreLines = append(ignoreLines, lines...)
-			}
+			ignoreLines = append(ignoreLines, strings.Split(string(content), "\n")...)
 		}
 	}
-
-	if len(ignoreLines) > 0 {
-		matcher = ignore.CompileIgnoreLines(ignoreLines...)
-	}
+	matcher := ignore.CompileIgnoreLines(ignoreLines...)
 
 	if !info.IsDir() {
-		// Check if the file itself is excluded
-		if matcher != nil && matcher.MatchesPath(target) {
-			return res, nil
+		if !matcher.MatchesPath(target) {
+			c.processFile(target, true, ignores, res)
 		}
-		c.processFile(target, true, ignores, res)
 		return res, nil
 	}
 
@@ -373,6 +312,32 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 	return res, nil
 }
 
+// scopedIgnoreLines reads the ignore files in dir and rewrites their patterns relative to root.
+func (c *Config) scopedIgnoreLines(root, dir string) []string {
+	relDir, _ := filepath.Rel(root, dir)
+	var lines []string
+	for _, name := range c.ignoreFileNames() {
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(content), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			if strings.HasPrefix(line, "/") {
+				line = filepath.Join(relDir, line)
+			} else {
+				// Patterns without leading slash match relative to this directory
+				line = filepath.Join(relDir, "**", line)
+			}
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
 func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore, ignoreLines []string) error {
 	path = filepath.Clean(path)
 	if visited[path] {
@@ -380,48 +345,15 @@ func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res S
 	}
 	visited[path] = true
 
-	// Check exclusion (directory)
-	if matcher != nil && matcher.MatchesPath(path) {
+	if matcher.MatchesPath(path) {
 		return nil
 	}
 
-	currentMatcher := matcher
-	currentIgnoreLines := ignoreLines
-
-	// Only check for new ignore files if we are NOT at the root (they are already loaded in Scan)
+	// The root's ignore files are already loaded by Scan.
 	if root != path {
-		ignoreFiles := []string{".depextifyignore"}
-		if c.GitignoreAware {
-			ignoreFiles = append(ignoreFiles, ".gitignore")
-		}
-
-		foundNewIgnore := false
-		for _, name := range ignoreFiles {
-			ignorePath := filepath.Join(path, name)
-			if content, err := os.ReadFile(ignorePath); err == nil {
-				foundNewIgnore = true
-				relDir, _ := filepath.Rel(root, path)
-
-				lines := strings.Split(string(content), "\n")
-				for _, line := range lines {
-					line = strings.TrimSpace(line)
-					if line == "" || strings.HasPrefix(line, "#") {
-						continue
-					}
-					// Prefix pattern with relative path to scope it
-					if strings.HasPrefix(line, "/") {
-						line = filepath.Join(relDir, line)
-					} else {
-						// Patterns without leading slash match relative to this directory
-						line = filepath.Join(relDir, "**", line)
-					}
-					currentIgnoreLines = append(currentIgnoreLines, line)
-				}
-			}
-		}
-
-		if foundNewIgnore {
-			currentMatcher = ignore.CompileIgnoreLines(currentIgnoreLines...)
+		if scoped := c.scopedIgnoreLines(root, path); len(scoped) > 0 {
+			ignoreLines = append(ignoreLines, scoped...)
+			matcher = ignore.CompileIgnoreLines(ignoreLines...)
 		}
 	}
 
@@ -432,14 +364,12 @@ func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res S
 
 	for _, d := range entries {
 		name := d.Name()
-		if name == "." || name == ".." || (!c.ShowHidden && name[0] == '.') {
+		if !c.ShowHidden && name[0] == '.' {
 			continue
 		}
 
 		fullPath := filepath.Join(path, name)
-
-		// Check exclusion (file/subdir)
-		if currentMatcher != nil && currentMatcher.MatchesPath(fullPath) {
+		if matcher.MatchesPath(fullPath) {
 			continue
 		}
 
@@ -447,26 +377,19 @@ func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res S
 		if err != nil {
 			continue
 		}
-
+		// Linked directories are walked under their link path.
 		if info.Mode()&os.ModeSymlink != 0 {
 			resolved, err := filepath.EvalSymlinks(fullPath)
 			if err != nil {
 				continue
 			}
-			info, err = os.Stat(resolved)
-			if err != nil {
-				continue
-			}
-			if info.IsDir() {
-				if err := c.walkRecursive(root, fullPath, ignores, res, visited, currentMatcher, currentIgnoreLines); err != nil {
-					return err
-				}
+			if info, err = os.Stat(resolved); err != nil {
 				continue
 			}
 		}
 
 		if info.IsDir() {
-			if err := c.walkRecursive(root, fullPath, ignores, res, visited, currentMatcher, currentIgnoreLines); err != nil {
+			if err := c.walkRecursive(root, fullPath, ignores, res, visited, matcher, ignoreLines); err != nil {
 				return err
 			}
 		} else {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
@@ -57,11 +58,6 @@ func highlightCode(code string, lexerName, styleName string, hl *highlightRange)
 		_ = formatter.Format(&sb, style, chroma.Literator(t))
 	}
 
-	// Helper to format a highlighted string
-	formatHighlight := func(s string) {
-		sb.WriteString(colorBold + colorRed + s + colorReset)
-	}
-
 	currentPos := 0
 	for _, token := range iterator.Tokens() {
 		tLen := len(token.Value)
@@ -85,8 +81,7 @@ func highlightCode(code string, lexerName, styleName string, hl *highlightRange)
 			// Highlighted part
 			// We strip syntax highlighting for the command itself and enforce Bold Red.
 
-			mid := token.Value[ovStart-currentPos : ovEnd-currentPos]
-			formatHighlight(mid)
+			sb.WriteString(colorBold + colorRed + token.Value[ovStart-currentPos:ovEnd-currentPos] + colorReset)
 
 			// Part after highlight
 			if tEnd > ovEnd {
@@ -103,12 +98,12 @@ func highlightCode(code string, lexerName, styleName string, hl *highlightRange)
 
 // FormatConfig contains settings for output formatting.
 type FormatConfig struct {
-	ShowCount   bool
-	ShowPos     bool
-	UseColor    bool
-	LexerName   string
-	StyleName   string
-	IsDirectory bool
+	ShowCount   bool   `yaml:"show_count"`
+	ShowPos     bool   `yaml:"show_pos"`
+	UseColor    bool   `yaml:"use_color"`
+	LexerName   string `yaml:"lexer"`
+	StyleName   string `yaml:"style"`
+	IsDirectory bool   `yaml:"-"`
 }
 
 // Formatter defines the interface for formatting the scan results.
@@ -124,107 +119,80 @@ type TextFormatter struct {
 // Format returns a formatted string representation of the result.
 func (f *TextFormatter) Format(r ScanResult) (string, error) {
 	c := f.Config
-	var sb strings.Builder
+	paint := func(color, s string) string {
+		if c.UseColor {
+			return color + s + colorReset
+		}
+		return s
+	}
+	colon := paint(colorYellow, ":")
 
-	globalLineWidth := 0
+	lineWidth := 0
 	if c.ShowPos {
 		maxLine := 0
 		for _, cmds := range r {
 			for _, occs := range cmds {
 				for _, occ := range occs {
-					if occ.Line > maxLine {
-						maxLine = occ.Line
-					}
+					maxLine = max(maxLine, occ.Line)
 				}
 			}
 		}
-		globalLineWidth = len(fmt.Sprintf("%d", maxLine))
+		lineWidth = len(strconv.Itoa(maxLine))
 	}
 
-	paths := slices.Sorted(maps.Keys(r))
-	for _, path := range paths {
+	indent := ""
+	if c.IsDirectory {
+		indent = "  "
+	}
+
+	var sb strings.Builder
+	for _, path := range slices.Sorted(maps.Keys(r)) {
 		if c.IsDirectory {
-			p := path
-			if c.UseColor {
-				p = colorCyan + path + colorReset
+			sb.WriteString(paint(colorCyan, path) + "\n")
+		}
+
+		lexerName := c.LexerName
+		if lexerName == DefaultLexer {
+			if l := lexers.Match(path); l != nil {
+				lexerName = l.Config().Name
 			}
-			sb.WriteString(p + "\n")
 		}
 
-		indent := ""
-		if c.IsDirectory {
-			indent = "  "
-		}
-
-		cmds := slices.Sorted(maps.Keys(r[path]))
-		for _, cmd := range cmds {
+		for _, cmd := range slices.Sorted(maps.Keys(r[path])) {
 			occs := r[path][cmd]
 
-			cCmd := cmd
-			if c.UseColor {
-				cCmd = colorBold + cmd + colorReset
-			}
-
 			suffix := ""
-			colon := ":"
-			if c.UseColor {
-				colon = colorYellow + ":" + colorReset
-			}
-
 			if c.ShowCount || c.ShowPos {
 				suffix = colon
-				if c.ShowCount {
-					count := fmt.Sprintf(" %d", len(occs))
-					if c.UseColor {
-						count = colorGreen + count + colorReset
-					}
-					suffix += count
-				}
 			}
+			if c.ShowCount {
+				suffix += paint(colorGreen, fmt.Sprintf(" %d", len(occs)))
+			}
+			fmt.Fprintf(&sb, "%s%s%s\n", indent, paint(colorBold, cmd), suffix)
 
-			fmt.Fprintf(&sb, "%s%s%s\n", indent, cCmd, suffix)
-
-			if c.ShowPos {
-				for _, occ := range occs {
-					ln := fmt.Sprintf("%*d", globalLineWidth, occ.Line)
-					if c.UseColor {
-						ln = colorGreen + ln + colorReset
+			if !c.ShowPos {
+				continue
+			}
+			for _, occ := range occs {
+				content := strings.TrimSpace(occ.FullLine)
+				if c.UseColor {
+					start := occ.Col - 1
+					end := start + occ.Len
+					var hl *highlightRange
+					if start >= 0 && end <= len(occ.FullLine) {
+						hl = &highlightRange{start: start, end: end}
 					}
-					cln := ":"
-					if c.UseColor {
-						cln = colorYellow + ":" + colorReset
-					}
-
-					content := occ.FullLine
-					if c.UseColor {
-						start := occ.Col - 1
-						end := start + occ.Len
-
-						lexerName := c.LexerName
-						if lexerName == DefaultLexer {
-							if l := lexers.Match(path); l != nil {
-								lexerName = l.Config().Name
-							}
-						}
-
-						hl := &highlightRange{start: start, end: end}
-						if start < 0 || end > len(occ.FullLine) {
-							hl = nil
-						}
-
-						content = highlightCode(content, lexerName, c.StyleName, hl)
-					} else {
-						content = strings.TrimSpace(content)
-					}
-					fmt.Fprintf(&sb, "%s  %s%s  %s\n", indent, ln, cln, content)
+					content = highlightCode(occ.FullLine, lexerName, c.StyleName, hl)
 				}
+				ln := paint(colorGreen, fmt.Sprintf("%*d", lineWidth, occ.Line))
+				fmt.Fprintf(&sb, "%s  %s%s  %s\n", indent, ln, colon, content)
 			}
 		}
 	}
 	return sb.String(), nil
 }
 
-func transformResult(r ScanResult, c *FormatConfig) interface{} {
+func transformResult(r ScanResult, c *FormatConfig) any {
 	if c.ShowPos {
 		return r
 	}
@@ -242,12 +210,7 @@ func transformResult(r ScanResult, c *FormatConfig) interface{} {
 
 	list := make(map[string][]string)
 	for file, cmds := range r {
-		keys := make([]string, 0, len(cmds))
-		for cmd := range cmds {
-			keys = append(keys, cmd)
-		}
-		slices.Sort(keys)
-		list[file] = keys
+		list[file] = slices.Sorted(maps.Keys(cmds))
 	}
 	return list
 }

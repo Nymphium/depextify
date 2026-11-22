@@ -5,75 +5,73 @@ import (
 	"slices"
 )
 
-// Ignore shell built-in commands
-var builtins = func() map[string]bool {
-	keys := []string{
-		"!", "(", ")", ".", ":", "[", "[[", "]]", "{", "}",
-		"alias", "autoload", "bg", "bind", "bindkey", "break", "builtin", "bye",
-		"case", "cd", "chdir", "command", "comparguments", "compcall", "compctl",
-		"compdescribe", "compfiles", "compgroups", "compquote", "comptags",
-		"comptry", "compvalues", "continue", "declare", "dirs", "disable",
-		"disown", "do", "done", "echo", "echotc", "echoti", "elif", "else",
-		"emulate", "enable", "esac", "eval", "exec", "exit", "export", "false",
-		"fc", "fg", "fi", "for", "function", "functions", "getcap", "getln",
-		"getopts", "hash", "help", "history", "if", "integer", "jobs", "kill",
-		"let", "limit", "local", "log", "logout", "noglob", "popd", "print",
-		"printf", "pushd", "pushln", "pwd", "read", "readonly", "rehash",
-		"return", "sched", "select", "set", "setopt", "shift", "source", "stat",
-		"suspend", "test", "then", "times", "trap", "true", "ttyctl", "type",
-		"typeset", "ulimit", "umask", "unalias", "unfunction", "unhash",
-		"unlimit", "unset", "unsetopt", "until", "vared", "wait", "whence",
-		"where", "while", "which", "zcompile", "zformat", "zftp", "zle",
-		"zmodload", "zparseopts", "zprof", "zpty", "zregexparse", "zstat", "ztcp",
-		"zstyle", "add-zsh-hook", "compaudit", "compinit",
-	}
-
-	b := make(map[string]bool, len(keys))
-
+func set(keys ...string) map[string]bool {
+	m := make(map[string]bool, len(keys))
 	for _, k := range keys {
-		b[k] = true
+		m[k] = true
 	}
-
-	return b
-}()
-
-var coreutils = map[string]bool{
-	"arch": true, "b2sum": true, "base32": true, "base64": true, "basename": true,
-	"basenc": true, "cat": true, "chcon": true, "chgrp": true, "chmod": true,
-	"chown": true, "chroot": true, "cksum": true, "comm": true, "cp": true,
-	"csplit": true, "cut": true, "date": true, "dd": true, "df": true,
-	"dir": true, "dircolors": true, "dirname": true, "du": true, "expand": true,
-	"expr": true, "factor": true, "fmt": true, "fold": true, "groups": true,
-	"head": true, "hostid": true, "id": true, "install": true, "join": true,
-	"link": true, "ln": true, "logname": true, "ls": true, "md5sum": true,
-	"mkdir": true, "mkfifo": true, "mknod": true, "mktemp": true, "mv": true,
-	"nice": true, "nl": true, "nohup": true, "nproc": true, "numfmt": true,
-	"od": true, "paste": true, "pathchk": true, "pinky": true, "pr": true,
-	"printenv": true, "ptx": true, "readlink": true, "realpath": true, "rm": true,
-	"rmdir": true, "runcon": true, "seq": true, "sha1sum": true, "sha224sum": true,
-	"sha256sum": true, "sha384sum": true, "sha512sum": true, "shred": true,
-	"shuf": true, "sleep": true, "sort": true, "split": true, "stat": true,
-	"stdbuf": true, "stty": true, "sum": true, "sync": true, "tac": true,
-	"tail": true, "tee": true, "timeout": true, "touch": true, "tr": true,
-	"truncate": true, "tsort": true, "tty": true, "uname": true, "unexpand": true,
-	"uniq": true, "unlink": true, "uptime": true, "users": true, "vdir": true,
-	"wc": true, "who": true, "whoami": true, "yes": true,
+	return m
 }
 
-var common = map[string]bool{
-	"awk": true, "grep": true, "egrep": true, "fgrep": true, "sed": true,
-	"find": true, "xargs": true, "diff": true, "patch": true, "tar": true,
-	"gzip": true, "gunzip": true, "bzip2": true, "bunzip2": true, "xz": true,
-	"unxz": true, "zip": true, "unzip": true, "ssh": true, "scp": true,
-	"rsync": true, "curl": true, "wget": true, "git": true, "make": true,
-	"sudo": true, "apt": true, "apt-get": true, "dpkg": true, "ps": true,
-	"top": true, "htop": true, "killall": true, "mount": true, "umount": true,
-	"df": true, "du": true, "free": true, "lscpu": true, "lsblk": true,
-	"lsusb": true, "lspci": true, "ip": true, "ifconfig": true, "ping": true,
-	"netstat": true, "ss": true, "traceroute": true, "dig": true, "host": true,
-	"nslookup": true, "hostname": true, "man": true, "info": true, "less": true,
-	"more": true, "nano": true, "vim": true, "vi": true, "emacs": true,
-}
+// Ignore shell built-in commands
+var builtins = set(
+	"!", "(", ")", ".", ":", "[", "[[", "]]", "{", "}",
+	"alias", "autoload", "bg", "bind", "bindkey", "break", "builtin", "bye",
+	"case", "cd", "chdir", "command", "comparguments", "compcall", "compctl",
+	"compdescribe", "compfiles", "compgroups", "compquote", "comptags",
+	"comptry", "compvalues", "continue", "declare", "dirs", "disable",
+	"disown", "do", "done", "echo", "echotc", "echoti", "elif", "else",
+	"emulate", "enable", "esac", "eval", "exec", "exit", "export", "false",
+	"fc", "fg", "fi", "for", "function", "functions", "getcap", "getln",
+	"getopts", "hash", "help", "history", "if", "integer", "jobs", "kill",
+	"let", "limit", "local", "log", "logout", "noglob", "popd", "print",
+	"printf", "pushd", "pushln", "pwd", "read", "readonly", "rehash",
+	"return", "sched", "select", "set", "setopt", "shift", "source", "stat",
+	"suspend", "test", "then", "times", "trap", "true", "ttyctl", "type",
+	"typeset", "ulimit", "umask", "unalias", "unfunction", "unhash",
+	"unlimit", "unset", "unsetopt", "until", "vared", "wait", "whence",
+	"where", "while", "which", "zcompile", "zformat", "zftp", "zle",
+	"zmodload", "zparseopts", "zprof", "zpty", "zregexparse", "zstat", "ztcp",
+	"zstyle", "add-zsh-hook", "compaudit", "compinit",
+)
+
+var coreutils = set(
+	"arch", "b2sum", "base32", "base64", "basename",
+	"basenc", "cat", "chcon", "chgrp", "chmod",
+	"chown", "chroot", "cksum", "comm", "cp",
+	"csplit", "cut", "date", "dd", "df",
+	"dir", "dircolors", "dirname", "du", "expand",
+	"expr", "factor", "fmt", "fold", "groups",
+	"head", "hostid", "id", "install", "join",
+	"link", "ln", "logname", "ls", "md5sum",
+	"mkdir", "mkfifo", "mknod", "mktemp", "mv",
+	"nice", "nl", "nohup", "nproc", "numfmt",
+	"od", "paste", "pathchk", "pinky", "pr",
+	"printenv", "ptx", "readlink", "realpath", "rm",
+	"rmdir", "runcon", "seq", "sha1sum", "sha224sum",
+	"sha256sum", "sha384sum", "sha512sum", "shred",
+	"shuf", "sleep", "sort", "split", "stat",
+	"stdbuf", "stty", "sum", "sync", "tac",
+	"tail", "tee", "timeout", "touch", "tr",
+	"truncate", "tsort", "tty", "uname", "unexpand",
+	"uniq", "unlink", "uptime", "users", "vdir",
+	"wc", "who", "whoami", "yes",
+)
+
+var common = set(
+	"awk", "grep", "egrep", "fgrep", "sed",
+	"find", "xargs", "diff", "patch", "tar",
+	"gzip", "gunzip", "bzip2", "bunzip2", "xz",
+	"unxz", "zip", "unzip", "ssh", "scp",
+	"rsync", "curl", "wget", "git", "make",
+	"sudo", "apt", "apt-get", "dpkg", "ps",
+	"top", "htop", "killall", "mount", "umount",
+	"df", "du", "free", "lscpu", "lsblk",
+	"lsusb", "lspci", "ip", "ifconfig", "ping",
+	"netstat", "ss", "traceroute", "dig", "host",
+	"nslookup", "hostname", "man", "info", "less",
+	"more", "nano", "vim", "vi", "emacs",
+)
 
 // GetBuiltins returns a sorted list of shell built-in commands.
 func GetBuiltins() []string {
