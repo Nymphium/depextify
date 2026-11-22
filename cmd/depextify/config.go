@@ -100,6 +100,13 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 	fs.StringVar(&cfg.LexerName, "lexer", cfg.LexerName, "chroma lexer name")
 	fs.StringVar(&cfg.StyleName, "style", cfg.StyleName, "chroma style name (env: DEPEXTIFY_STYLE)")
 	fs.StringVar(&cfg.IgnoresStr, "ignores", "", "comma-separated list of commands to ignore")
+	appendTo := func(p *[]string) func(string) error {
+		return func(s string) error {
+			*p = append(*p, strings.Split(s, ",")...)
+			return nil
+		}
+	}
+	fs.Func("query", "comma-separated list of commands to find; only they are reported, even if ignored", appendTo(&cfg.Query))
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "output format (text, json, yaml)")
 
 	fs.Usage = func() {
@@ -115,6 +122,7 @@ func setupFlagSet(cfg *CLIConfig) *flag.FlagSet {
 		fmt.Fprintf(os.Stderr, "  -[no-]color\n    \t%s\n", u("no-color"))
 		fmt.Fprintf(os.Stderr, "  -[no-]gitignore-aware\n    \t%s\n", u("no-gitignore-aware"))
 		fmt.Fprintf(os.Stderr, "  -ignores string\n    \t%s\n", u("ignores"))
+		fmt.Fprintf(os.Stderr, "  -query string\n    \t%s\n", u("query"))
 		fmt.Fprintf(os.Stderr, "  -list string\n    \t%s\n", u("list"))
 		fmt.Fprintf(os.Stderr, "  -lexer string\n    \t%s (default: %q)\n", u("lexer"), depextify.DefaultLexer)
 		fmt.Fprintf(os.Stderr, "  -style string\n    \t%s (default: %q)\n", u("style"), depextify.DefaultStyle)

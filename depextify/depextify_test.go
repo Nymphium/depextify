@@ -244,6 +244,19 @@ func TestScan(t *testing.T) {
 		require.Contains(t, res[script1Path], "ls")
 	})
 
+	t.Run("query reports only queried commands, even ignored ones", func(t *testing.T) {
+		dir := t.TempDir()
+		a := filepath.Join(dir, "a.sh")
+		b := filepath.Join(dir, "b.sh")
+		require.NoError(t, os.WriteFile(a, []byte("grep x\njq .\n"), 0600))
+		require.NoError(t, os.WriteFile(b, []byte("curl y\n"), 0600))
+
+		config := &Config{NoCommon: true, Query: []string{"grep"}}
+		res, err := config.Scan(dir)
+		require.NoError(t, err)
+		require.Equal(t, ScanResult{a: {"grep": {{Line: 1, Col: 1, Len: 4, FullLine: "grep x"}}}}, res)
+	})
+
 	t.Run("gitignore aware", func(t *testing.T) {
 		dir := t.TempDir()
 		f1 := filepath.Join(dir, "f1.sh")

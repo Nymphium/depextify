@@ -4,9 +4,11 @@ package depextify
 import (
 	"bufio"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	ignore "github.com/sabhiram/go-gitignore"
@@ -26,6 +28,9 @@ type (
 		Aggregate      bool `yaml:"aggregate"`
 
 		Excludes []string `yaml:"excludes"`
+
+		// Query, when not empty, restricts the result to these commands, which are reported even when an ignore rule covers them.
+		Query []string `yaml:"-"`
 	}
 
 	// Occurrence represents a single occurrence of a command.
@@ -206,10 +211,34 @@ func isShellFile(path string) bool {
 	return reShebang.MatchString(string(line))
 }
 
-func (c *Config) calculateFileOccurrences(cmdPositions map[string][]PosInfo, lines []string, ignores map[string]bool) map[string][]Occurrence {
+// Ignored reports whether the ignore rules of c (the categories and ExtraIgnores) exclude cmd.
+func (c *Config) Ignored(cmd string) bool {
+	// ponytail: linear scan of ExtraIgnores; build a set once if ignore lists grow to thousands.
+	return (c.NoBuiltins && builtins[cmd]) || (c.NoCoreutils && coreutils[cmd]) || (c.NoCommon && common[cmd]) || slices.Contains(c.ExtraIgnores, cmd)
+}
+
+func (c *Config) reports(cmd string) bool {
+	if len(c.Query) > 0 {
+		return slices.Contains(c.Query, cmd)
+	}
+	return !c.Ignored(cmd)
+}
+
+// Commands returns the sorted names of the commands in r.
+func (r ScanResult) Commands() []string {
+	cmds := make(map[string]bool)
+	for _, fileOccs := range r {
+		for cmd := range fileOccs {
+			cmds[cmd] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(cmds))
+}
+
+func (c *Config) calculateFileOccurrences(cmdPositions map[string][]PosInfo, lines []string) map[string][]Occurrence {
 	fileOccs := make(map[string][]Occurrence)
 	for cmd, ps := range cmdPositions {
-		if (c.NoBuiltins && builtins[cmd]) || (c.NoCoreutils && coreutils[cmd]) || (c.NoCommon && common[cmd]) || ignores[cmd] {
+		if !c.reports(cmd) {
 			continue
 		}
 		for _, p := range ps {
@@ -226,7 +255,7 @@ func (c *Config) calculateFileOccurrences(cmdPositions map[string][]PosInfo, lin
 	return fileOccs
 }
 
-func (c *Config) processFile(path string, skipCheck bool, ignores map[string]bool, res ScanResult) {
+func (c *Config) processFile(path string, skipCheck bool, res ScanResult) {
 	path = filepath.Clean(path)
 
 	ext := GetExtractor(path)
@@ -249,7 +278,7 @@ func (c *Config) processFile(path string, skipCheck bool, ignores map[string]boo
 
 	lines := strings.Split(string(content), "\n")
 
-	fileOccs := c.calculateFileOccurrences(cmdPositions, lines, ignores)
+	fileOccs := c.calculateFileOccurrences(cmdPositions, lines)
 	if len(fileOccs) > 0 {
 		res[path] = fileOccs
 	}
@@ -269,7 +298,6 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 		return nil, err
 	}
 
-	ignores := set(c.ExtraIgnores...)
 	res := make(ScanResult)
 
 	// Explicit excludes and the ignore files in the target directory
@@ -288,13 +316,13 @@ func (c *Config) Scan(target string) (ScanResult, error) {
 
 	if !info.IsDir() {
 		if !matcher.MatchesPath(target) {
-			c.processFile(target, true, ignores, res)
+			c.processFile(target, true, res)
 		}
 		return res, nil
 	}
 
 	visited := make(map[string]bool)
-	err = c.walkRecursive(target, target, ignores, res, visited, matcher, ignoreLines)
+	err = c.walkRecursive(target, target, res, visited, matcher, ignoreLines)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +366,7 @@ func (c *Config) scopedIgnoreLines(root, dir string) []string {
 	return lines
 }
 
-func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore, ignoreLines []string) error {
+func (c *Config) walkRecursive(root, path string, res ScanResult, visited map[string]bool, matcher *ignore.GitIgnore, ignoreLines []string) error {
 	path = filepath.Clean(path)
 	if visited[path] {
 		return nil
@@ -389,11 +417,11 @@ func (c *Config) walkRecursive(root, path string, ignores map[string]bool, res S
 		}
 
 		if info.IsDir() {
-			if err := c.walkRecursive(root, fullPath, ignores, res, visited, matcher, ignoreLines); err != nil {
+			if err := c.walkRecursive(root, fullPath, res, visited, matcher, ignoreLines); err != nil {
 				return err
 			}
 		} else {
-			c.processFile(fullPath, false, ignores, res)
+			c.processFile(fullPath, false, res)
 		}
 	}
 	return nil
